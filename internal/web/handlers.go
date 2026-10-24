@@ -15,9 +15,11 @@ import (
 type card struct {
 	store.Entry
 	Notes int
-	// Snippet and NoteSnippet are set on search results.
+	// Snippet, NoteSnippet, and Why are set on search results.
 	Snippet     []search.Segment
 	NoteSnippet []search.Segment
+	// Why says why a search listed this highlight.
+	Why []string
 	// Detail is set on the quote page, where the notes are already shown
 	// below the card.
 	Detail bool
@@ -96,15 +98,22 @@ func (s *Server) daily(w http.ResponseWriter, r *http.Request) error {
 
 type searchPage struct {
 	page
-	Query   search.Query
-	Books   []store.BookCount
-	Results []card
+	Query search.Query
+	Books []store.BookCount
 	// Searched is false on a bare /search with no query or filters.
 	Searched bool
-	// Total counts every match; set on the first page only.
-	Total int
+	Results  []card
+	// Total counts every match. When meaning-based matching ran, Words
+	// and Meaning split it into word matches and meaning-only matches.
+	Total    int
+	Semantic bool
+	Words    int
+	Meaning  int
 	// Next is the URL of the next page of results, or "" on the last.
 	Next string
+	// Fallback explains why meaning-based matching didn't run, so the
+	// results are keyword matches only.
+	Fallback string
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
@@ -131,7 +140,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		Searched: q.Text != "" || q.BookID != 0 || q.Favorites,
 	}
 	if data.Searched {
-		if err := s.searchResults(q, &data); err != nil {
+		if err := s.searchResults(r, &data); err != nil {
 			return err
 		}
 	}
@@ -148,17 +157,18 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	return s.render(w, "search.html", data)
 }
 
-// searchResults fills in one page of results, the link to the next page,
-// and (on the first page) the total.
-func (s *Server) searchResults(q search.Query, data *searchPage) error {
-	// Ask for one extra row to learn whether another page exists.
-	q.Limit = search.PageSize + 1
-	results, err := search.Keyword(s.store, q)
+// searchResults fills in one page of results and the link to the next.
+// The app always searches in hybrid mode; the other modes exist for
+// cmpl eval to compare against.
+func (s *Server) searchResults(r *http.Request, data *searchPage) error {
+	q := data.Query
+	p, err := s.searcher.Run(r.Context(), q, search.ModeHybrid)
 	if err != nil {
 		return err
 	}
-	if len(results) > search.PageSize {
-		results = results[:search.PageSize]
+	data.Total, data.Fallback = p.Total, p.Fallback
+	data.Semantic, data.Words, data.Meaning = p.Semantic, p.WordMatches, p.MeaningOnly
+	if p.More {
 		next := url.Values{"offset": {strconv.Itoa(q.Offset + search.PageSize)}}
 		if q.Text != "" {
 			next.Set("q", q.Text)
@@ -171,25 +181,40 @@ func (s *Server) searchResults(q search.Query, data *searchPage) error {
 		}
 		data.Next = "/search?" + next.Encode()
 	}
-	if q.Offset == 0 {
-		if data.Total, err = search.Count(s.store, q); err != nil {
-			return err
-		}
-	}
-	entries := make([]store.Entry, len(results))
-	for i, res := range results {
+	entries := make([]store.Entry, len(p.Results))
+	for i, res := range p.Results {
 		entries[i] = res.Entry
 	}
 	cards, err := s.cards(entries)
 	if err != nil {
 		return err
 	}
-	for i, res := range results {
+	for i, res := range p.Results {
 		cards[i].Snippet = res.Snippet
 		cards[i].NoteSnippet = res.NoteSnippet
+		cards[i].Why = why(res)
 	}
 	data.Results = cards
 	return nil
+}
+
+var fieldReasons = map[search.Field]string{
+	search.FieldText:   "Words in the passage",
+	search.FieldNotes:  "Words in your note",
+	search.FieldTitle:  "Words in the title",
+	search.FieldAuthor: "Words in the author",
+}
+
+// why explains a search hit in plain terms.
+func why(r search.Result) []string {
+	var out []string
+	for _, f := range r.Matched {
+		out = append(out, fieldReasons[f])
+	}
+	if r.Similar {
+		out = append(out, "Similar in meaning")
+	}
+	return out
 }
 
 type highlightPage struct {
@@ -217,6 +242,77 @@ func (s *Server) highlight(w http.ResponseWriter, r *http.Request) error {
 		Card:  c,
 		Notes: notesData{HighlightID: id, Notes: notes},
 	})
+}
+
+// similarK is how many neighbors the Similar panel shows per group.
+const similarK = 6
+
+type similarData struct {
+	// Ready is false when the highlight has no embedding yet.
+	Ready bool
+	// Reason says why similar highlights are unavailable.
+	Reason     string
+	OtherBooks []similarItem
+	SameBook   []similarItem
+}
+
+type similarItem struct {
+	store.Entry
+	Score float32
+}
+
+// similar renders the Similar panel's contents for a quote page. It is
+// fetched after the page loads so a slow or missing embedder never delays
+// the quote itself.
+func (s *Server) similar(w http.ResponseWriter, r *http.Request) error {
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	if _, err := s.store.Entry(id); err != nil {
+		return err
+	}
+	var data similarData
+	if s.searcher.Index == nil {
+		data.Reason = "Similar highlights need an embedding model; start Ollama and restart cmpl serve."
+		return s.render(w, "similar", data)
+	}
+	other, same, ok, err := s.searcher.Index.Similar(id, similarK)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		data.Reason = "This highlight isn't embedded yet. Similar highlights appear once Ollama has processed it."
+		return s.render(w, "similar", data)
+	}
+	data.Ready = true
+	if data.OtherBooks, err = s.similarItems(other); err != nil {
+		return err
+	}
+	if data.SameBook, err = s.similarItems(same); err != nil {
+		return err
+	}
+	return s.render(w, "similar", data)
+}
+
+func (s *Server) similarItems(hits []search.Hit) ([]similarItem, error) {
+	ids := make([]int64, len(hits))
+	scores := make(map[int64]float32, len(hits))
+	for i, h := range hits {
+		ids[i] = h.ID
+		scores[h.ID] = h.Score
+	}
+	// Entries skips ids deleted since the index loaded, so match scores
+	// by id rather than position.
+	entries, err := s.store.Entries(ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]similarItem, len(entries))
+	for i, e := range entries {
+		out[i] = similarItem{Entry: e, Score: scores[e.ID]}
+	}
+	return out, nil
 }
 
 func (s *Server) favorite(w http.ResponseWriter, r *http.Request) error {

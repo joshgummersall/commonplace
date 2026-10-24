@@ -283,3 +283,35 @@ func TestKeywordPaging(t *testing.T) {
 		}
 	}
 }
+
+func TestKeywordMatchedFields(t *testing.T) {
+	s := seed(t)
+	tests := []struct {
+		q    string
+		want string
+	}{
+		{"perceptible", "[text]"},
+		{"orwell", "[author]"},
+		{"meditations", "[title]"},
+		{"obstacle", "[notes]"},
+		// "the" is also in the note, but it explains nothing.
+		{"the impediment", "[text]"},
+		// An all-common query still gets a reason.
+		{"we are the", "[text]"},
+	}
+	for _, tt := range tests {
+		rs := mustSearch(t, s, Query{Text: tt.q})
+		if len(rs) == 0 {
+			t.Errorf("%q: no results", tt.q)
+			continue
+		}
+		if got := fmt.Sprint(rs[0].Matched); got != tt.want {
+			t.Errorf("%q: Matched = %s, want %s", tt.q, got, tt.want)
+		}
+	}
+	for _, r := range mustSearch(t, s, Query{BookID: 1}) {
+		if len(r.Matched) != 0 {
+			t.Errorf("listing without a query reported matches %v", r.Matched)
+		}
+	}
+}

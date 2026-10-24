@@ -44,7 +44,8 @@ It listens on localhost by default. The app has no login, so only use
 				return err
 			}
 			logger := slog.New(slog.NewTextHandler(a.stderr, nil))
-			srv, err := web.New(s, web.Options{DevDir: devDir, Logger: logger})
+			e := a.embedder()
+			srv, err := web.New(s, web.Options{DevDir: devDir, Logger: logger, Embedder: e})
 			if err != nil {
 				return err
 			}
@@ -62,7 +63,7 @@ It listens on localhost by default. The app has no login, so only use
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			go embedding.KeepFresh(ctx, s, a.embedder(), time.Minute, logger)
+			go embedding.KeepFresh(ctx, s, e, time.Minute, logger)
 			errc := make(chan error, 1)
 			go func() { errc <- httpSrv.Serve(ln) }()
 			select {

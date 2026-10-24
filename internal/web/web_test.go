@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/joshgummersall/commonplace/internal/clippings"
+	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/importer"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
@@ -403,4 +405,142 @@ func TestSearchLoadMore(t *testing.T) {
 	}
 	// Few results: no button at all.
 	mustNotContain(t, h.get("/search?q=%22passage+007%22"), "data-load-more")
+}
+
+func TestSearchExplainsWhy(t *testing.T) {
+	h := newHarness(t,
+		clip("Meditations", "Marcus Aurelius", 10, "The impediment to action advances action."),
+		clip("1984", "Orwell, George", 20, "We are the dead."),
+	)
+	mustContain(t, h.get("/search?q=impediment"), "Listed because: </span>Words in the passage")
+	mustContain(t, h.get("/search?q=orwell"), "Words in the author")
+	// Without an embedder the app says why meaning wasn't used.
+	mustContain(t, h.get("/search?q=dead"), "Keyword matches only:")
+	h.store.SetFavorite(h.firstID(), true)
+	mustNotContain(t, h.get("/search?fav=1"), "Listed because")
+}
+
+// wordEmbedder puts texts sharing the word "luck" or "sea" near each other.
+type wordEmbedder struct{}
+
+func (wordEmbedder) Model() string { return "test/words" }
+func (wordEmbedder) EmbedDocuments(_ context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i, t := range texts {
+		v := []float32{0.1, 0.1, 0.1}
+		if strings.Contains(strings.ToLower(t), "luck") {
+			v[0] = 1
+		}
+		if strings.Contains(strings.ToLower(t), "sea") {
+			v[1] = 1
+		}
+		embedding.Normalize(v)
+		out[i] = v
+	}
+	return out, nil
+}
+func (e wordEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	vs, err := e.EmbedDocuments(ctx, []string{text})
+	return vs[0], err
+}
+
+func TestSimilarPanel(t *testing.T) {
+	clips := []clippings.Clipping{
+		clip("Fooled by Randomness", "Taleb", 10, "Luck is the reason for extreme success."),
+		clip("Fooled by Randomness", "Taleb", 20, "Never mistake luck for skill."),
+		clip("The Drunkard's Walk", "Mlodinow", 30, "Luck shapes outcomes more than we admit."),
+		clip("The Old Man and the Sea", "Hemingway", 40, "The sea was calm that night."),
+	}
+
+	// Without an embedder the panel says what's needed.
+	plain := newHarness(t, clips...)
+	_, body := plain.do("GET", fmt.Sprintf("/h/%d/similar", plain.firstID()), nil, true)
+	mustContain(t, body, "need an embedding model")
+
+	s, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := importer.Import(s, clips, now); err != nil {
+		t.Fatal(err)
+	}
+	w, err := New(s, Options{Now: func() time.Time { return now }, Embedder: wordEmbedder{}, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(w.Handler())
+	defer srv.Close()
+	h := &harness{t: t, store: s, srv: srv}
+
+	var luck int64
+	s.DB().QueryRow(`SELECT id FROM highlights WHERE text LIKE 'Never mistake%'`).Scan(&luck)
+
+	// Not embedded yet.
+	_, body = h.do("GET", fmt.Sprintf("/h/%d/similar", luck), nil, true)
+	mustContain(t, body, "embedded yet. Similar highlights appear")
+
+	if _, err := embedding.Backfill(context.Background(), s, wordEmbedder{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	_, body = h.do("GET", fmt.Sprintf("/h/%d/similar", luck), nil, true)
+	mustContain(t, body, "From other books", "Luck shapes outcomes", "From this book", "Luck is the reason")
+	other := body[strings.Index(body, "From other books"):strings.Index(body, "From this book")]
+	if strings.Index(other, "Luck shapes") > strings.Index(other, "The sea was calm") {
+		t.Error("the unrelated passage ranked above the related one")
+	}
+	mustNotContain(t, body, "Never mistake luck") // not similar to itself
+
+	// The quote page loads the panel lazily and offers More like this.
+	page := h.get(fmt.Sprintf("/h/%d", luck))
+	mustContain(t, page, fmt.Sprintf(`hx-get="/h/%d/similar"`, luck), `href="#similar"`)
+	if status, _ := h.do("GET", "/h/9999/similar", nil, true); status != http.StatusNotFound {
+		t.Errorf("similar for a missing highlight = %d, want 404", status)
+	}
+
+	// Hybrid search: the word match and the meaning match both explain themselves.
+	results := h.get("/search?q=skill")
+	mustContain(t, results, "Words in the passage")
+}
+
+func TestAssetsAreVersioned(t *testing.T) {
+	h := newHarness(t)
+	page := h.get("/")
+	m := regexp.MustCompile(`href="(/static/app\.css\?v=[0-9a-f]{8})"`).FindStringSubmatch(page)
+	if m == nil {
+		t.Fatal("stylesheet link has no content hash")
+	}
+	resp, err := http.Get(h.srv.URL + m[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("versioned asset Cache-Control = %q", cc)
+	}
+}
+
+func TestSearchCountLine(t *testing.T) {
+	clips := []clippings.Clipping{
+		clip("Fooled by Randomness", "Taleb", 10, "Luck is the reason for extreme success."),
+		clip("The Old Man and the Sea", "Hemingway", 20, "The sea was calm that night."),
+		clip("The Old Man and the Sea", "Hemingway", 30, "He fished the sea alone."),
+	}
+	s, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	importer.Import(s, clips, now)
+	embedding.Backfill(context.Background(), s, wordEmbedder{}, nil)
+	w, _ := New(s, Options{Now: func() time.Time { return now }, Embedder: wordEmbedder{}, Logger: slog.New(slog.DiscardHandler)})
+	srv := httptest.NewServer(w.Handler())
+	defer srv.Close()
+	h := &harness{t: t, store: s, srv: srv}
+
+	// "luck" is in one passage; the sea passages come in by meaning (the
+	// test embedder makes everything at least a little similar).
+	mustContain(t, h.get("/search?q=luck"), "1 with your words · 2 more similar in meaning")
+	// Without the embedder's help, a plain count.
+	mustContain(t, newHarness(t, clips...).get("/search?q=luck"), "1 result<")
 }

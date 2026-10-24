@@ -101,6 +101,7 @@ $` + dbEnvVar + ` or --db.`,
 
 	root.AddCommand(
 		a.newImportCommand(),
+		a.newEvalCommand(),
 		a.newServeCommand(),
 		a.newVersionCommand(),
 	)

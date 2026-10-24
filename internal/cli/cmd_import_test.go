@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -127,5 +128,43 @@ func TestImportEmbeds(t *testing.T) {
 	out, errOut, _ = runCLIWith(t, unitEmbedder{}, "--db", db, "import", fixture)
 	if strings.Contains(out, "embedded") || errOut != "" {
 		t.Errorf("third import should have nothing to embed:\n%s%s", out, errOut)
+	}
+}
+
+func TestEvalCommand(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "c.db")
+	if _, _, err := runCLI(t, "--db", db, "import", filepath.Join("..", "..", "testdata", "kindle", "clippings.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Default location is next to the database; a missing file shows the format.
+	_, _, err := runCLI(t, "--db", db, "eval")
+	if err == nil || !strings.Contains(err.Error(), "eval.yaml does not exist") || !strings.Contains(err.Error(), "expect:") {
+		t.Fatalf("err = %v", err)
+	}
+
+	evalFile := filepath.Join(dir, "eval.yaml")
+	body := "k: 5\nqueries:\n  - query: perceptible change\n    expect: [1]\n  - query: nothing here\n    expect: [424242]\n"
+	if err := os.WriteFile(evalFile, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, err := runCLI(t, "--db", db, "eval", "-v")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"2 queries, k=5", "RECALL@5", "keyword", "hybrid", "keyword fallback", "perceptible change"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout missing %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(errOut, "[424242]") {
+		t.Errorf("stderr should warn about the unknown id:\n%s", errOut)
+	}
+
+	// Hidden from help.
+	help, _, _ := runCLI(t, "--help")
+	if strings.Contains(help, "eval") {
+		t.Error("eval shows in --help")
 	}
 }

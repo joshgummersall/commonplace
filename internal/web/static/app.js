@@ -123,8 +123,17 @@
   };
 
   function open() {
-    const link = selected("quote")?.querySelector('[data-action="open"]');
+    const link = selected()?.querySelector('[data-action="open"]');
     if (link) link.click();
+  }
+
+  // On a quote page, "More like this" scrolls to the panel and selects
+  // its first item once loaded.
+  function similarPanel() {
+    const first = document.querySelector("#similar [data-item]");
+    if (!first) return false;
+    select(items().indexOf(first), { scroll: "center" });
+    return true;
   }
 
   function writeNote() {
@@ -143,8 +152,8 @@
   }
 
   async function yank() {
-    const q = selected("quote");
-    if (!q) return;
+    const q = selected();
+    if (!q?.querySelector("[data-yank]")) return;
     const text = [...q.querySelectorAll("[data-yank] p")].map((p) => p.innerText.trim()).join("\n\n");
     const cite = q.querySelector("[data-yank-cite]")?.innerText.trim().replace(/\s+/g, " ");
     try {
@@ -203,6 +212,7 @@
     [["x", "dd"], "Delete selected note", () => act("delete", "note")],
     [["u"], "Undo", undo],
     [["yy"], "Copy quote with source", yank],
+    [["s"], "More like this", () => similarPanel() || act("similar", "quote")],
     [["i", "a"], "Write a note", writeNote],
     [["cc"], "Edit selected note", () => act("edit", "note")],
     [["?"], "Toggle this help", () => toggleHelp()],
@@ -314,6 +324,9 @@
   // htmx replaces items on favorite, bury, and note edits; keep the
   // selection on the same position.
   document.addEventListener("htmx:afterSettle", (e) => {
+    // Arriving from "More like this" on another page: select the first
+    // similar highlight once the panel has loaded.
+    if (e.target.classList?.contains("similar-body") && location.hash === "#similar") similarPanel();
     if (e.target.id === "results") {
       current = -1;
       try {

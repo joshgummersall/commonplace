@@ -21,6 +21,9 @@
     {{template "favorite" .}}
     {{if not .Detail}}
     <a class="button" href="/h/{{.ID}}" data-action="open">{{if .Notes}}{{.Notes}} {{plural .Notes "note" "notes"}}{{else}}Add a note{{end}}</a>
+    <a class="button" href="/h/{{.ID}}#similar" data-action="similar" title="Similar highlights (s)">More like this</a>
+    {{else}}
+    <a class="button" href="#similar" data-action="similar" title="Similar highlights (s)">More like this ↓</a>
     {{end}}
     {{if .Buried}}
     <button type="button" data-action="unbury" title="Show in Daily again (b)"
@@ -30,6 +33,9 @@
       hx-post="/h/{{.ID}}/bury" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
     {{end}}
   </div>
+  {{with .Why}}
+  <p class="why"><span class="visually-hidden">Listed because: </span>{{range $i, $r := .}}{{if $i}} · {{end}}{{$r}}{{end}}</p>
+  {{end}}
 </article>
 {{end}}
 

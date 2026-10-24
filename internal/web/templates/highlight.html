@@ -1,7 +1,40 @@
 {{template "head" .}}
 {{template "card" .Card}}
 {{template "notes" .Notes}}
+<section class="similar" id="similar" aria-labelledby="similar-heading">
+  <h2 id="similar-heading">More like this</h2>
+  <div hx-get="/h/{{.Card.ID}}/similar" hx-trigger="load" hx-swap="outerHTML">
+    <p class="empty">Finding similar highlights…</p>
+  </div>
+</section>
 {{template "foot" .}}
+
+{{define "similar"}}
+<div class="similar-body">
+{{if not .Ready}}
+  <p class="empty">{{.Reason}}</p>
+{{else}}
+  {{if .OtherBooks}}
+  <h3>From other books</h3>
+  {{range .OtherBooks}}{{template "similar-item" .}}{{end}}
+  {{end}}
+  {{if .SameBook}}
+  <h3>From this book</h3>
+  {{range .SameBook}}{{template "similar-item" .}}{{end}}
+  {{end}}
+  {{if and (not .OtherBooks) (not .SameBook)}}<p class="empty">Nothing else is embedded yet.</p>{{end}}
+{{end}}
+</div>
+{{end}}
+
+{{define "similar-item"}}
+<article class="similar-item" data-item="similar" data-id="{{.ID}}" tabindex="-1">
+  <a href="/h/{{.ID}}" data-action="open">
+    <blockquote data-yank>{{range paragraphs .Text}}<p>{{.}}</p>{{end}}</blockquote>
+  </a>
+  <p class="meta"><cite data-yank-cite>{{.BookTitle}}{{with .BookAuthor}} <span class="author">{{.}}</span>{{end}}</cite></p>
+</article>
+{{end}}
 
 {{define "notes"}}
 <section class="notes" id="notes" aria-labelledby="notes-heading">

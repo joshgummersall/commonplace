@@ -1,4 +1,4 @@
-// Package search finds highlights by keyword (and, later, by meaning).
+// Package search finds highlights by keyword, by meaning, or both.
 package search
 
 import (
@@ -16,6 +16,11 @@ type Query struct {
 	Favorites bool  // only favorites
 	Limit     int   // 0 means PageSize
 	Offset    int   // rows to skip, for loading the next page
+	// AnyWords matches highlights with any of the words rather than all
+	// of them (phrases still match whole). Hybrid search uses it so a
+	// partial match can rank; bm25 still favors highlights with more of
+	// the words.
+	AnyWords bool
 }
 
 // PageSize is how many results a page of search holds.
@@ -28,9 +33,25 @@ type Segment struct {
 	Match bool
 }
 
+// Field is a part of a highlight a keyword search can match.
+type Field string
+
+const (
+	FieldText   Field = "text"
+	FieldNotes  Field = "notes"
+	FieldTitle  Field = "title"
+	FieldAuthor Field = "author"
+)
+
 // Result is one search hit.
 type Result struct {
 	store.Entry
+	// Matched lists where the query's words were found, in display order.
+	// Empty when the highlight was found by meaning alone, or listed by a
+	// filter without a query.
+	Matched []Field
+	// Similar is true when the highlight was found by meaning.
+	Similar bool
 	// Snippet is the highlight text around the matches, or the whole text
 	// when it is short or nothing in it matched.
 	Snippet []Segment
@@ -67,14 +88,16 @@ func Keyword(s *store.Store, q Query) ([]Result, error) {
 		sql = fmt.Sprintf(`SELECT %s,
 				bm25(highlights_fts, %s),
 				snippet(highlights_fts, 0, '%s', '%s', '…', 48),
-				snippet(highlights_fts, 1, '%s', '%s', '…', 24)
+				snippet(highlights_fts, 1, '%s', '%s', '…', 24),
+				snippet(highlights_fts, 2, '%s', '%s', '', 8),
+				snippet(highlights_fts, 3, '%s', '%s', '', 8)
 			%s WHERE %s
 			ORDER BY bm25(highlights_fts, %s), h.id
 			LIMIT ? OFFSET ?`,
 			store.EntryColumns, bm25Weights, markOpen, markClose, markOpen, markClose,
-			from, where, bm25Weights)
+			markOpen, markClose, markOpen, markClose, from, where, bm25Weights)
 	} else {
-		sql = fmt.Sprintf(`SELECT %s, 0, '', ''
+		sql = fmt.Sprintf(`SELECT %s, 0, '', '', '', ''
 			%s WHERE %s
 			ORDER BY h.highlighted_at IS NULL, h.highlighted_at DESC, h.id DESC
 			LIMIT ? OFFSET ?`,
@@ -87,13 +110,14 @@ func Keyword(s *store.Store, q Query) ([]Result, error) {
 		return nil, fmt.Errorf("keyword search: %w", err)
 	}
 	defer rows.Close()
+	onlyCommon := allCommon(q.Text)
 	var out []Result
 	for rows.Next() {
 		var (
-			r                Result
-			textSnip, noteSn string
+			r                                   Result
+			textSnip, noteSn, titleSn, authorSn string
 		)
-		e, err := store.ScanEntry(rows, &r.Rank, &textSnip, &noteSn)
+		e, err := store.ScanEntry(rows, &r.Rank, &textSnip, &noteSn, &titleSn, &authorSn)
 		if err != nil {
 			return nil, err
 		}
@@ -104,6 +128,19 @@ func Keyword(s *store.Store, q Query) ([]Result, error) {
 		}
 		if ns := segments(noteSn); hasMatch(ns) {
 			r.NoteSnippet = ns
+		}
+		for _, f := range []struct {
+			field Field
+			segs  []Segment
+		}{
+			{FieldText, r.Snippet},
+			{FieldNotes, r.NoteSnippet},
+			{FieldTitle, segments(titleSn)},
+			{FieldAuthor, segments(authorSn)},
+		} {
+			if meaningfulMatch(f.segs, onlyCommon) {
+				r.Matched = append(r.Matched, f.field)
+			}
 		}
 		out = append(out, r)
 	}
@@ -129,7 +166,11 @@ func Count(s *store.Store, q Query) (int, error) {
 func clauses(q Query) (from, where string, args []any, ranked bool) {
 	var conds []string
 	from = "FROM highlights h JOIN books b ON b.id = h.book_id"
-	if match := ftsQuery(q.Text); match != "" {
+	match := ftsQuery(q.Text)
+	if q.AnyWords {
+		match = ftsQueryAny(q.Text)
+	}
+	if match != "" {
 		ranked = true
 		from = `FROM highlights_fts
 			JOIN highlights h ON h.id = highlights_fts.rowid
@@ -151,6 +192,29 @@ func clauses(q Query) (from, where string, args []any, ranked bool) {
 }
 
 func ftsQuery(text string) string {
+	return strings.Join(ftsTerms(text), " ")
+}
+
+// ftsQueryAny ORs the terms instead. Common words are dropped, unless
+// that would leave nothing, or "the" alone would match every highlight.
+func ftsQueryAny(text string) string {
+	terms := ftsTerms(text)
+	var kept []string
+	for _, t := range terms {
+		word := strings.TrimSuffix(strings.Trim(strings.TrimSuffix(t, "*"), `"`), "*")
+		if strings.Contains(word, " ") || !commonWords[strings.ToLower(word)] {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) == 0 {
+		kept = terms
+	}
+	return strings.Join(kept, " OR ")
+}
+
+// ftsTerms quotes each word and phrase; the last bare word gets a prefix
+// marker.
+func ftsTerms(text string) []string {
 	var (
 		terms   []string
 		inQuote bool
@@ -193,12 +257,12 @@ func ftsQuery(text string) string {
 		trailingWord = false
 	}
 	if len(terms) == 0 {
-		return ""
+		return nil
 	}
 	if trailingWord {
 		terms[len(terms)-1] += "*"
 	}
-	return strings.Join(terms, " ")
+	return terms
 }
 
 func segments(snippet string) []Segment {
@@ -227,6 +291,38 @@ func segments(snippet string) []Segment {
 func hasMatch(segs []Segment) bool {
 	for _, s := range segs {
 		if s.Match {
+			return true
+		}
+	}
+	return false
+}
+
+// commonWords are too frequent to explain why a highlight matched: "the
+// impediment" matching a note only through "the" isn't a reason to show.
+// They still match; they just don't count as a reason.
+var commonWords = map[string]bool{
+	"a": true, "an": true, "and": true, "are": true, "as": true, "at": true, "be": true,
+	"but": true, "by": true, "for": true, "from": true, "he": true, "her": true, "his": true,
+	"i": true, "in": true, "is": true, "it": true, "its": true, "not": true, "of": true,
+	"on": true, "or": true, "she": true, "so": true, "that": true, "the": true, "their": true,
+	"they": true, "this": true, "to": true, "was": true, "we": true, "what": true, "with": true,
+	"you": true, "your": true,
+}
+
+func allCommon(text string) bool {
+	for _, w := range strings.Fields(strings.ToLower(text)) {
+		if !commonWords[strings.Trim(w, `"'.,;:!?`)] {
+			return false
+		}
+	}
+	return true
+}
+
+// meaningfulMatch reports whether segs mark a word that explains the
+// match. When the query itself is all common words, any mark counts.
+func meaningfulMatch(segs []Segment, onlyCommon bool) bool {
+	for _, s := range segs {
+		if s.Match && (onlyCommon || !commonWords[strings.ToLower(strings.TrimSpace(s.Text))]) {
 			return true
 		}
 	}

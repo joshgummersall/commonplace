@@ -82,3 +82,21 @@ func int64Args(ids []int64) []any {
 	}
 	return args
 }
+
+// FavoriteIDs returns the set of favorite highlights.
+func (s *Store) FavoriteIDs() (map[int64]bool, error) {
+	rows, err := s.db.Query(`SELECT id FROM highlights WHERE favorite = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[int64]bool)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}

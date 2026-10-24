@@ -3,7 +3,9 @@
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
@@ -15,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/joshgummersall/commonplace/internal/embedding"
+	"github.com/joshgummersall/commonplace/internal/search"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -23,11 +27,12 @@ var embedded embed.FS
 
 // Server holds what the handlers need.
 type Server struct {
-	store  *store.Store
-	logger *slog.Logger
-	now    func() time.Time
-	files  fs.FS
-	dev    bool
+	store    *store.Store
+	searcher *search.Searcher
+	logger   *slog.Logger
+	now      func() time.Time
+	files    fs.FS
+	dev      bool
 
 	mu   sync.Mutex
 	tmpl *template.Template
@@ -39,14 +44,22 @@ type Options struct {
 	// directory (the internal/web source folder) and re-reads templates
 	// on every request, so edits show up without a rebuild.
 	DevDir string
-	Logger *slog.Logger
-	Now    func() time.Time
+	// Embedder enables semantic search and similar highlights. Without
+	// it, search is keyword only.
+	Embedder embedding.Embedder
+	Logger   *slog.Logger
+	Now      func() time.Time
 }
 
 // New builds a Server. It parses templates up front so a broken template
 // fails at startup rather than on first request.
 func New(s *store.Store, opts Options) (*Server, error) {
 	srv := &Server{store: s, logger: opts.Logger, now: opts.Now, files: embedded}
+	srv.searcher = &search.Searcher{Store: s}
+	if opts.Embedder != nil {
+		srv.searcher.Embedder = opts.Embedder
+		srv.searcher.Index = search.NewIndex(s, opts.Embedder.Model())
+	}
 	if srv.logger == nil {
 		srv.logger = slog.Default()
 	}
@@ -69,11 +82,24 @@ func New(s *store.Store, opts Options) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	static, _ := fs.Sub(s.files, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
+	files := http.StripPrefix("/static/", http.FileServerFS(static))
+	mux.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Pages link assets with a ?v= content hash (see asset), so a
+		// versioned URL never changes and can be cached for good. In dev
+		// mode files change under the same URL, so always revalidate.
+		switch {
+		case s.dev:
+			w.Header().Set("Cache-Control", "no-cache")
+		case r.URL.Query().Has("v"):
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		files.ServeHTTP(w, r)
+	}))
 
 	mux.HandleFunc("GET /{$}", s.handle(s.daily))
 	mux.HandleFunc("GET /search", s.handle(s.search))
 	mux.HandleFunc("GET /h/{id}", s.handle(s.highlight))
+	mux.HandleFunc("GET /h/{id}/similar", s.handle(s.similar))
 	mux.HandleFunc("POST /h/{id}/favorite", s.handle(s.favorite))
 	mux.HandleFunc("POST /h/{id}/bury", s.handle(s.bury))
 	mux.HandleFunc("POST /h/{id}/unbury", s.handle(s.unbury))
@@ -133,12 +159,24 @@ func (s *Server) templates() (*template.Template, error) {
 	if s.tmpl != nil && !s.dev {
 		return s.tmpl, nil
 	}
-	t, err := template.New("").Funcs(funcs).ParseFS(s.files, "templates/*.html")
+	fm := template.FuncMap{"asset": s.asset}
+	t, err := template.New("").Funcs(funcs).Funcs(fm).ParseFS(s.files, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
 	s.tmpl = t
 	return t, nil
+}
+
+// asset returns a static file's URL with a short content hash, so browsers
+// fetch a file again exactly when it changes.
+func (s *Server) asset(name string) (string, error) {
+	b, err := fs.ReadFile(s.files, "static/"+name)
+	if err != nil {
+		return "", fmt.Errorf("asset %s: %w", name, err)
+	}
+	sum := sha256.Sum256(b)
+	return "/static/" + name + "?v=" + hex.EncodeToString(sum[:4]), nil
 }
 
 // render executes a named template into a buffer first, so a template
