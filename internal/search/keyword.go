@@ -1,0 +1,220 @@
+// Package search finds highlights by keyword (and, later, by meaning).
+package search
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/joshgummersall/commonplace/internal/store"
+)
+
+// Query is a search request. An empty Text lists highlights matching the
+// filters, newest first.
+type Query struct {
+	Text   string
+	BookID int64  // 0 means any book
+	Tag    string // "" means any tag
+	Limit  int    // 0 means DefaultLimit
+}
+
+const DefaultLimit = 50
+
+// Segment is a run of snippet text; Match marks a matched term. Templates
+// escape Text and wrap matches, so snippets are safe to render as HTML.
+type Segment struct {
+	Text  string
+	Match bool
+}
+
+// Result is one search hit.
+type Result struct {
+	store.Entry
+	// Snippet is the highlight text around the matches, or the whole text
+	// when it is short or nothing in it matched.
+	Snippet []Segment
+	// NoteSnippet is set when the match was in the highlight's notes.
+	NoteSnippet []Segment
+	// Rank is bm25: lower is better. Zero when listing without a query.
+	Rank float64
+}
+
+// Snippet markers. Control characters can't appear in highlight text that
+// came through the parser, so they can't collide with real text.
+const (
+	markOpen  = "\x01"
+	markClose = "\x02"
+)
+
+// bm25 column weights, in highlights_fts column order: text, notes, title,
+// author. A word in the passage itself counts most; a word in the book
+// title should surface the book's highlights without outranking passages
+// that say it.
+const bm25Weights = "1.0, 0.8, 0.4, 0.4"
+
+// Keyword runs a full-text search with bm25 ranking.
+func Keyword(s *store.Store, q Query) ([]Result, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = DefaultLimit
+	}
+	match := ftsQuery(q.Text)
+
+	var (
+		where []string
+		args  []any
+	)
+	if match != "" {
+		where = append(where, "highlights_fts MATCH ?")
+		args = append(args, match)
+	}
+	if q.BookID != 0 {
+		where = append(where, "h.book_id = ?")
+		args = append(args, q.BookID)
+	}
+	if q.Tag != "" {
+		where = append(where, `EXISTS (SELECT 1 FROM highlight_tags ht JOIN tags t ON t.id = ht.tag_id
+			WHERE ht.highlight_id = h.id AND t.name = ?)`)
+		args = append(args, q.Tag)
+	}
+	if len(where) == 0 {
+		where = append(where, "1")
+	}
+
+	var sql string
+	if match != "" {
+		sql = fmt.Sprintf(`SELECT %s,
+				bm25(highlights_fts, %s),
+				snippet(highlights_fts, 0, '%s', '%s', '…', 48),
+				snippet(highlights_fts, 1, '%s', '%s', '…', 24)
+			FROM highlights_fts
+			JOIN highlights h ON h.id = highlights_fts.rowid
+			JOIN books b ON b.id = h.book_id
+			WHERE %s
+			ORDER BY bm25(highlights_fts, %s), h.id
+			LIMIT ?`,
+			store.EntryColumns, bm25Weights, markOpen, markClose, markOpen, markClose,
+			strings.Join(where, " AND "), bm25Weights)
+	} else {
+		sql = fmt.Sprintf(`SELECT %s, 0, '', ''
+			FROM highlights h JOIN books b ON b.id = h.book_id
+			WHERE %s
+			ORDER BY h.highlighted_at IS NULL, h.highlighted_at DESC, h.id DESC
+			LIMIT ?`,
+			store.EntryColumns, strings.Join(where, " AND "))
+	}
+	args = append(args, limit)
+
+	rows, err := s.DB().Query(sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("keyword search: %w", err)
+	}
+	defer rows.Close()
+	var out []Result
+	for rows.Next() {
+		var (
+			r                Result
+			textSnip, noteSn string
+		)
+		e, err := store.ScanEntry(rows, &r.Rank, &textSnip, &noteSn)
+		if err != nil {
+			return nil, err
+		}
+		r.Entry = e
+		r.Snippet = segments(textSnip)
+		if !hasMatch(r.Snippet) {
+			r.Snippet = []Segment{{Text: e.Text}}
+		}
+		if ns := segments(noteSn); hasMatch(ns) {
+			r.NoteSnippet = ns
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ftsQuery turns what a person types into a safe FTS5 query. Every word is
+// quoted, so FTS syntax (AND, NEAR, -, :, *) is matched literally rather
+// than interpreted; double-quoted runs become phrases. Words are ANDed,
+// and the last one matches as a prefix so results update while typing.
+func ftsQuery(text string) string {
+	var (
+		terms   []string
+		inQuote bool
+		cur     strings.Builder
+		phrase  []string
+	)
+	flushWord := func() {
+		if cur.Len() == 0 {
+			return
+		}
+		if inQuote {
+			phrase = append(phrase, cur.String())
+		} else {
+			terms = append(terms, `"`+cur.String()+`"`)
+		}
+		cur.Reset()
+	}
+	for _, r := range text {
+		switch {
+		case r == '"':
+			flushWord()
+			if inQuote && len(phrase) > 0 {
+				terms = append(terms, `"`+strings.Join(phrase, " ")+`"`)
+			}
+			phrase = nil
+			inQuote = !inQuote
+		case r == ' ' || r == '\t' || r == '\n':
+			flushWord()
+		case r < ' ':
+			// Control characters would collide with the snippet markers.
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	trailingWord := cur.Len() > 0 && !inQuote
+	flushWord()
+	if inQuote && len(phrase) > 0 {
+		// An unclosed quote still searches as a phrase.
+		terms = append(terms, `"`+strings.Join(phrase, " ")+`"`)
+		trailingWord = false
+	}
+	if len(terms) == 0 {
+		return ""
+	}
+	if trailingWord {
+		terms[len(terms)-1] += "*"
+	}
+	return strings.Join(terms, " ")
+}
+
+func segments(snippet string) []Segment {
+	var out []Segment
+	for snippet != "" {
+		open := strings.Index(snippet, markOpen)
+		if open < 0 {
+			out = append(out, Segment{Text: snippet})
+			break
+		}
+		if open > 0 {
+			out = append(out, Segment{Text: snippet[:open]})
+		}
+		rest := snippet[open+len(markOpen):]
+		end := strings.Index(rest, markClose)
+		if end < 0 {
+			out = append(out, Segment{Text: rest, Match: true})
+			break
+		}
+		out = append(out, Segment{Text: rest[:end], Match: true})
+		snippet = rest[end+len(markClose):]
+	}
+	return out
+}
+
+func hasMatch(segs []Segment) bool {
+	for _, s := range segs {
+		if s.Match {
+			return true
+		}
+	}
+	return false
+}

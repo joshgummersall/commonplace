@@ -162,30 +162,40 @@ func scanHighlights(rows *sql.Rows) ([]Highlight, error) {
 	defer rows.Close()
 	var out []Highlight
 	for rows.Next() {
-		var (
-			h                               Highlight
-			locStart, locEnd                sql.NullInt64
-			highlightedAt, imported, seenAt sql.NullString
-		)
-		if err := rows.Scan(&h.ID, &h.BookID, &h.Source, &h.Text, &h.Location, &h.Page,
-			&locStart, &locEnd, &highlightedAt, &imported, &h.Hash, &h.Favorite, &h.Dismissed,
-			&seenAt, &h.Weight); err != nil {
-			return nil, err
-		}
-		h.LocStart, h.LocEnd = int(locStart.Int64), int(locEnd.Int64)
-		var err error
-		if h.HighlightedAt, err = parseTime(highlightedAt); err != nil {
-			return nil, err
-		}
-		if h.ImportedAt, err = parseTime(imported); err != nil {
-			return nil, err
-		}
-		if h.LastSeen, err = parseTime(seenAt); err != nil {
+		h, err := scanHighlight(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+// scanHighlight scans highlightColumns, then any extra destinations.
+func scanHighlight(rows *sql.Rows, extra ...any) (Highlight, error) {
+	var (
+		h                               Highlight
+		locStart, locEnd                sql.NullInt64
+		highlightedAt, imported, seenAt sql.NullString
+	)
+	dest := []any{&h.ID, &h.BookID, &h.Source, &h.Text, &h.Location, &h.Page,
+		&locStart, &locEnd, &highlightedAt, &imported, &h.Hash, &h.Favorite, &h.Dismissed,
+		&seenAt, &h.Weight}
+	if err := rows.Scan(append(dest, extra...)...); err != nil {
+		return Highlight{}, err
+	}
+	h.LocStart, h.LocEnd = int(locStart.Int64), int(locEnd.Int64)
+	var err error
+	if h.HighlightedAt, err = parseTime(highlightedAt); err != nil {
+		return Highlight{}, err
+	}
+	if h.ImportedAt, err = parseTime(imported); err != nil {
+		return Highlight{}, err
+	}
+	if h.LastSeen, err = parseTime(seenAt); err != nil {
+		return Highlight{}, err
+	}
+	return h, nil
 }
 
 // Times are stored as RFC 3339 in UTC so they sort as text.
@@ -216,4 +226,10 @@ func parseTime(s sql.NullString) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("parse stored time %q: %w", s.String, err)
 	}
 	return t, nil
+}
+
+// MarkSeen sets a highlight's last_seen.
+func (t *Tx) MarkSeen(id int64, now time.Time) error {
+	_, err := t.tx.Exec(`UPDATE highlights SET last_seen = ? WHERE id = ?`, formatTime(now), id)
+	return err
 }
