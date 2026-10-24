@@ -1,0 +1,10 @@
+{{template "head" .}}
+<h1 class="page-title">{{.Date}}</h1>
+{{if .Cards}}
+<div class="cards">
+  {{range .Cards}}{{template "card" .}}{{end}}
+</div>
+{{else}}
+<p class="empty">Nothing to resurface yet. Import highlights with <code>cmpl import</code>.</p>
+{{end}}
+{{template "foot" .}}

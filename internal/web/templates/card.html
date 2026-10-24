@@ -1,0 +1,39 @@
+{{define "card"}}
+<article class="card{{if .Buried}} is-buried{{end}}" id="h-{{.ID}}" data-item="quote" data-id="{{.ID}}" tabindex="-1">
+  {{if .Buried}}
+  <p class="buried-banner">Buried: hidden from Daily, still in Search.</p>
+  {{end}}
+  <blockquote data-yank>
+    {{if .Snippet}}
+    <p class="snippet">{{range .Snippet}}{{if .Match}}<mark>{{.Text}}</mark>{{else}}{{.Text}}{{end}}{{end}}</p>
+    {{else}}
+    {{range paragraphs .Text}}<p>{{.}}</p>{{end}}
+    {{end}}
+  </blockquote>
+  {{if .NoteSnippet}}
+  <p class="note-snippet"><span class="label">Note</span> {{range .NoteSnippet}}{{if .Match}}<mark>{{.Text}}</mark>{{else}}{{.Text}}{{end}}{{end}}</p>
+  {{end}}
+  <footer class="meta">
+    <cite data-yank-cite><a href="/search?book={{.BookID}}">{{.BookTitle}}</a>{{with .BookAuthor}} <span class="author">{{.}}</span>{{end}}</cite>
+    {{with .Location}}<span class="loc">{{.}}</span>{{end}}
+  </footer>
+  <div class="actions">
+    {{template "favorite" .}}
+    {{if not .Detail}}
+    <a class="button" href="/h/{{.ID}}" data-action="open">{{if .Notes}}{{.Notes}} {{plural .Notes "note" "notes"}}{{else}}Add a note{{end}}</a>
+    {{end}}
+    {{if .Buried}}
+    <button type="button" data-action="unbury" title="Show in Daily again (b)"
+      hx-post="/h/{{.ID}}/unbury" hx-target="closest .card" hx-swap="outerHTML">Unbury</button>
+    {{else}}
+    <button type="button" data-action="bury" title="Hide from Daily; it stays in Search (b)"
+      hx-post="/h/{{.ID}}/bury" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
+    {{end}}
+  </div>
+</article>
+{{end}}
+
+{{define "favorite"}}
+<button type="button" class="favorite" data-action="favorite" aria-pressed="{{.Favorite}}" title="Favorite (f)"
+  hx-post="/h/{{.ID}}/favorite" hx-swap="outerHTML">{{if .Favorite}}★ Favorite{{else}}☆ Favorite{{end}}</button>
+{{end}}

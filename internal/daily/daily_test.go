@@ -83,28 +83,28 @@ func TestTodayIsStableWithinADay(t *testing.T) {
 	}
 }
 
-func TestTodayExcludesDismissed(t *testing.T) {
+func TestTodayExcludesBuried(t *testing.T) {
 	s := seedStore(t, 12)
-	if _, err := s.DB().Exec(`UPDATE highlights SET dismissed = 1 WHERE id <= 4`); err != nil {
+	if _, err := s.DB().Exec(`UPDATE highlights SET buried = 1 WHERE id <= 4`); err != nil {
 		t.Fatal(err)
 	}
 	day := time.Date(2026, 10, 24, 8, 0, 0, 0, time.Local)
 	got := mustToday(t, s, day)
 	if len(got) != 8 {
-		t.Fatalf("got %d, want the 8 undismissed", len(got))
+		t.Fatalf("got %d, want the 8 unburied", len(got))
 	}
 	for _, e := range got {
 		if e.ID <= 4 {
-			t.Errorf("dismissed highlight %d picked", e.ID)
+			t.Errorf("buried highlight %d picked", e.ID)
 		}
 	}
 
-	// Dismissing a highlight after it was picked drops it from the day.
-	if _, err := s.DB().Exec(`UPDATE highlights SET dismissed = 1 WHERE id = ?`, got[0].ID); err != nil {
+	// Burying a highlight after it was picked drops it from the day.
+	if _, err := s.DB().Exec(`UPDATE highlights SET buried = 1 WHERE id = ?`, got[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	if again := mustToday(t, s, day); len(again) != 7 {
-		t.Errorf("got %d after dismissing one, want 7", len(again))
+		t.Errorf("got %d after burying one, want 7", len(again))
 	}
 }
 

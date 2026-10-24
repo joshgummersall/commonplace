@@ -48,7 +48,7 @@ func (c candidate) score(now time.Time) float64 {
 
 // Today returns the day's shuffle for the local date of now, choosing and
 // storing it on the first call of the day. Later calls return the same
-// highlights, minus any deleted or dismissed since.
+// highlights, minus any deleted or buried since.
 func Today(s *store.Store, now time.Time, size int) ([]store.Entry, error) {
 	day := now.Format(time.DateOnly)
 	ids, err := picks(s.DB(), day)
@@ -64,7 +64,7 @@ func Today(s *store.Store, now time.Time, size int) ([]store.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return slices.DeleteFunc(entries, func(e store.Entry) bool { return e.Dismissed }), nil
+	return slices.DeleteFunc(entries, func(e store.Entry) bool { return e.Buried }), nil
 }
 
 // MarkSeen records that highlights were shown.
@@ -128,7 +128,7 @@ func choose(db *sql.DB, day string, now time.Time, size int) ([]int64, error) {
 
 func candidates(db *sql.DB) ([]candidate, error) {
 	rows, err := db.Query(`SELECT id, weight, favorite, last_seen FROM highlights
-		WHERE dismissed = 0 ORDER BY id`)
+		WHERE buried = 0 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}

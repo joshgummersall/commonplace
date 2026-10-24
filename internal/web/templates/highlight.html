@@ -1,0 +1,56 @@
+{{template "head" .}}
+{{template "card" .Card}}
+{{template "notes" .Notes}}
+{{template "foot" .}}
+
+{{define "notes"}}
+<section class="notes" id="notes" aria-labelledby="notes-heading">
+  <h2 id="notes-heading">Notes</h2>
+  {{range .Notes}}{{template "note" .}}{{else}}<p class="empty">No notes yet.</p>{{end}}
+  <form class="note-form" hx-post="/h/{{.HighlightID}}/notes" hx-target="#notes" hx-swap="outerHTML">
+    <textarea id="write" name="body" rows="3" placeholder="Write a note" aria-label="Write a note">{{.Draft}}</textarea>
+    {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+    <div class="form-actions">
+      <button type="submit">Add note</button>
+      <span class="hint"><kbd>Ctrl</kbd> <kbd>↩</kbd> saves · <kbd>Esc</kbd> leaves</span>
+    </div>
+  </form>
+</section>
+{{end}}
+
+{{define "note"}}
+<article class="note" id="note-{{.ID}}" data-item="note" data-id="{{.ID}}" tabindex="-1">
+  <header>
+    <span class="source">{{sourceName .Source}}</span>
+    <time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .CreatedAt}}</time>
+    {{if .UpdatedAt.After .CreatedAt}}<span class="edited" title="Edited {{date .UpdatedAt}}">edited</span>{{end}}
+  </header>
+  {{range paragraphs .Body}}<p>{{.}}</p>{{end}}
+  <div class="note-actions">
+    <button type="button" class="link" data-action="edit"
+      hx-get="/notes/{{.ID}}/edit" hx-target="#note-{{.ID}}" hx-swap="outerHTML">Edit</button>
+    <button type="button" class="link" data-action="delete"
+      hx-delete="/notes/{{.ID}}" hx-target="#note-{{.ID}}" hx-swap="outerHTML">Delete</button>
+  </div>
+</article>
+{{end}}
+
+{{define "note-deleted"}}
+<p class="note-deleted" id="note-{{.ID}}">Note deleted.
+  <button type="button" class="link" data-action="restore-note"
+    hx-post="/notes/{{.ID}}/restore" hx-target="#notes" hx-swap="outerHTML">Undo</button>
+</p>
+{{end}}
+
+{{define "note-edit"}}
+<form class="note note-edit" id="note-{{.ID}}" hx-put="/notes/{{.ID}}" hx-target="this" hx-swap="outerHTML"
+  data-cancel="/notes/{{.ID}}">
+  <textarea name="body" rows="4" aria-label="Edit note" autofocus>{{.Body}}</textarea>
+  <div class="form-actions">
+    <button type="submit">Save</button>
+    <button type="button" class="link" data-action="cancel"
+      hx-get="/notes/{{.ID}}" hx-target="#note-{{.ID}}" hx-swap="outerHTML">Cancel</button>
+    <span class="hint"><kbd>Ctrl</kbd> <kbd>↩</kbd> saves · <kbd>Esc</kbd> cancels</span>
+  </div>
+</form>
+{{end}}

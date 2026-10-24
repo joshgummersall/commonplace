@@ -22,7 +22,7 @@ type Highlight struct {
 	ImportedAt    time.Time
 	Hash          string
 	Favorite      bool
-	Dismissed     bool
+	Buried        bool
 	LastSeen      time.Time
 	Weight        float64
 }
@@ -64,7 +64,7 @@ func (t *Tx) BookID(title, author string) (int64, error) {
 }
 
 const highlightColumns = `id, book_id, source, text, location, page, loc_start, loc_end,
-	highlighted_at, imported_at, hash, favorite, dismissed, last_seen, weight`
+	highlighted_at, imported_at, hash, favorite, buried, last_seen, weight`
 
 // HighlightByHash returns the book's highlight with this text hash, or nil.
 func (t *Tx) HighlightByHash(bookID int64, hash string) (*Highlight, error) {
@@ -117,7 +117,7 @@ func (t *Tx) InsertHighlight(h *Highlight) error {
 }
 
 // ReplaceHighlightText swaps in a newer version of a highlight's text and
-// position, keeping its id, notes, tags, favorite, and history.
+// position, keeping its id, notes, favorite, and history.
 func (t *Tx) ReplaceHighlightText(id int64, h *Highlight) error {
 	_, err := t.tx.Exec(`UPDATE highlights SET
 		source = ?, text = ?, location = ?, page = ?, loc_start = ?, loc_end = ?, highlighted_at = ?, hash = ?
@@ -131,15 +131,12 @@ func (t *Tx) ReplaceHighlightText(id int64, h *Highlight) error {
 }
 
 // MergeInto folds highlight dropID into keepID and deletes dropID: keepID
-// takes dropID's notes, the union of both tag sets, favorite if either was,
-// and the later last_seen.
+// takes dropID's notes, favorite if either was, and the later last_seen.
 func (t *Tx) MergeInto(keepID, dropID int64) error {
 	stmts := []struct {
 		q    string
 		args []any
 	}{
-		{`INSERT OR IGNORE INTO highlight_tags (highlight_id, tag_id)
-			SELECT ?, tag_id FROM highlight_tags WHERE highlight_id = ?`, []any{keepID, dropID}},
 		// OR IGNORE skips device notes keepID already has; the delete below
 		// cascades to them.
 		{`UPDATE OR IGNORE notes SET highlight_id = ? WHERE highlight_id = ?`, []any{keepID, dropID}},
@@ -179,7 +176,7 @@ func scanHighlight(rows *sql.Rows, extra ...any) (Highlight, error) {
 		highlightedAt, imported, seenAt sql.NullString
 	)
 	dest := []any{&h.ID, &h.BookID, &h.Source, &h.Text, &h.Location, &h.Page,
-		&locStart, &locEnd, &highlightedAt, &imported, &h.Hash, &h.Favorite, &h.Dismissed,
+		&locStart, &locEnd, &highlightedAt, &imported, &h.Hash, &h.Favorite, &h.Buried,
 		&seenAt, &h.Weight}
 	if err := rows.Scan(append(dest, extra...)...); err != nil {
 		return Highlight{}, err

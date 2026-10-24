@@ -1,0 +1,31 @@
+{{template "head" .}}
+<form class="search" role="search" action="/search"
+  hx-get="/search" hx-target="#results" hx-push-url="true"
+  hx-trigger="input changed delay:150ms from:#q, change from:select, change from:#fav, submit">
+  <input id="q" name="q" type="search" value="{{.Query.Text}}" placeholder="Search highlights and notes"
+    aria-label="Search" autocomplete="off" autofocus>
+  <div class="filters">
+    <select name="book" aria-label="Book">
+      <option value="">All books</option>
+      {{range .Books}}<option value="{{.ID}}"{{if eq .ID $.Query.BookID}} selected{{end}}>{{.Title}} ({{.Count}})</option>{{end}}
+    </select>
+    <label class="check"><input id="fav" type="checkbox" name="fav" value="1"{{if .Query.Favorites}} checked{{end}}> ★ Favorites</label>
+  </div>
+</form>
+<div id="results" aria-live="polite">{{template "results" .}}</div>
+{{template "foot" .}}
+
+{{define "results"}}
+{{if .Searched}}
+  {{if .Results}}
+  <p class="count">{{len .Results}} {{plural (len .Results) "result" "results"}}{{if .Truncated}}{{if .Query.Text}}; showing the best matches only{{else}}; showing the newest only{{end}}{{end}}</p>
+  <div class="cards">
+    {{range .Results}}{{template "card" .}}{{end}}
+  </div>
+  {{else}}
+  <p class="empty">{{if and .Query.Favorites (not .Query.Text)}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights match.{{end}}</p>
+  {{end}}
+{{else}}
+<p class="empty">Search your highlights, notes, titles, and authors. Put a phrase in "quotes". Check Favorites to list them all.</p>
+{{end}}
+{{end}}

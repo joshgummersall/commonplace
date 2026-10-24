@@ -179,7 +179,7 @@ func TestImportNewerVersionUpdatesInPlace(t *testing.T) {
 }
 
 // Two highlights stored separately, then a newer version that spans both:
-// they become one row carrying both rows' tags, notes, and favorite.
+// they become one row carrying both rows' notes and favorite.
 func TestImportMergesStoredRows(t *testing.T) {
 	s := openStore(t)
 	a := clip(10, 10, 1, "the stones remember every flood that moved them.")
@@ -189,8 +189,6 @@ func TestImportMergesStoredRows(t *testing.T) {
 
 	db := s.DB()
 	for _, q := range []string{
-		`INSERT INTO tags (id, name) VALUES (1, 'risk'), (2, 'bias')`,
-		`INSERT INTO highlight_tags VALUES (` + itoa(idA) + `, 1), (` + itoa(idB) + `, 2)`,
 		`UPDATE highlights SET favorite = 1, last_seen = '2026-02-01T00:00:00Z' WHERE id = ` + itoa(idB),
 	} {
 		if _, err := db.Exec(q); err != nil {
@@ -229,9 +227,6 @@ func TestImportMergesStoredRows(t *testing.T) {
 	}
 	if len(notes) != 2 || notes[0].Body != "note a" || notes[1].Body != "note b" {
 		t.Errorf("merged notes = %+v, want both, oldest first", notes)
-	}
-	if n := count(t, s, `SELECT count(*) FROM highlight_tags WHERE highlight_id = ?`, id); n != 2 {
-		t.Errorf("merged row has %d tags, want 2", n)
 	}
 }
 

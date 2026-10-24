@@ -78,6 +78,7 @@ $` + dbEnvVar + ` or --db.`,
 
 	root.AddCommand(
 		a.newImportCommand(),
+		a.newServeCommand(),
 		a.newVersionCommand(),
 	)
 	return root

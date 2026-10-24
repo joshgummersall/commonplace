@@ -180,24 +180,6 @@ func TestKeywordFilters(t *testing.T) {
 		}
 	})
 
-	t.Run("tag filter", func(t *testing.T) {
-		for _, q := range []string{
-			`INSERT INTO tags (id, name) VALUES (1, 'Systems')`,
-			`INSERT INTO highlight_tags SELECT id, 1 FROM highlights WHERE loc_start = 2217`,
-		} {
-			if _, err := s.DB().Exec(q); err != nil {
-				t.Fatal(err)
-			}
-		}
-		rs := mustSearch(t, s, Query{Tag: "systems"})
-		if len(rs) != 1 || rs[0].LocStart != 2217 {
-			t.Fatalf("results = %+v", rs)
-		}
-		if rs := mustSearch(t, s, Query{Text: "perceptible", Tag: "systems"}); len(rs) != 0 {
-			t.Errorf("tag filter ignored with a query: %v", titles(rs))
-		}
-	})
-
 	t.Run("limit", func(t *testing.T) {
 		if rs := mustSearch(t, s, Query{Limit: 3}); len(rs) != 3 {
 			t.Errorf("%d results, want 3", len(rs))
@@ -228,5 +210,27 @@ func TestKeywordRanksTextAboveTitle(t *testing.T) {
 	}
 	if got := strings.Join(titles(rs), ","); got != "Management,Leverage" {
 		t.Errorf("order = %s", got)
+	}
+}
+
+func TestKeywordFavorites(t *testing.T) {
+	s := seed(t)
+	if _, err := s.DB().Exec(`UPDATE highlights SET favorite = 1 WHERE loc_start IN (2452, 2217)`); err != nil {
+		t.Fatal(err)
+	}
+	rs := mustSearch(t, s, Query{Favorites: true})
+	if len(rs) != 2 {
+		t.Fatalf("favorites = %v, want 2", titles(rs))
+	}
+	for _, r := range rs {
+		if !r.Favorite {
+			t.Errorf("non-favorite %d returned", r.ID)
+		}
+	}
+	if rs := mustSearch(t, s, Query{Text: "perceptible", Favorites: true}); len(rs) != 1 || rs[0].BookTitle != "1984" {
+		t.Errorf("favorites matching 'perceptible' = %v", titles(rs))
+	}
+	if rs := mustSearch(t, s, Query{Text: "impediment", Favorites: true}); len(rs) != 0 {
+		t.Errorf("non-favorite matched with the filter on: %v", titles(rs))
 	}
 }

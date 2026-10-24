@@ -30,13 +30,9 @@ func (s *Store) Entries(ids []int64) ([]Entry, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
 	rows, err := s.db.Query(`SELECT `+EntryColumns+`
 		FROM highlights h JOIN books b ON b.id = h.book_id
-		WHERE h.id IN (`+placeholders(len(ids))+`)`, args...)
+		WHERE h.id IN (`+placeholders(len(ids))+`)`, int64Args(ids)...)
 	if err != nil {
 		return nil, err
 	}

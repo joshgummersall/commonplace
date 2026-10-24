@@ -20,7 +20,7 @@ func (a *App) newImportCommand() *cobra.Command {
 The format is detected from the first entry unless --source is given.
 Re-importing a file is safe: highlights already stored are skipped, and an
 edited highlight (extended, trimmed, or shifted) replaces its older version,
-keeping its notes, tags, and favorite. Bookmarks are skipped.
+keeping its notes and favorite. Bookmarks are skipped.
 
 Entries that can't be parsed are reported as warnings and skipped.`,
 		Example: `  cmpl import "/Volumes/Kindle/documents/My Clippings.txt"

@@ -26,7 +26,9 @@ type Note struct {
 
 // AddDeviceNote stores a note imported from a device, unless this
 // highlight already has (or had, before an edit or delete) a note with the
-// same original text. It reports whether a note was added.
+// same original text. It reports whether a note was added. at is when the
+// note was written on the device (now if unknown); updated_at starts equal
+// to it, so only a real edit marks the note as edited.
 func (t *Tx) AddDeviceNote(highlightID int64, source, text string, at, now time.Time) (bool, error) {
 	text = strings.TrimSpace(text)
 	if at.IsZero() {
@@ -35,7 +37,7 @@ func (t *Tx) AddDeviceNote(highlightID int64, source, text string, at, now time.
 	res, err := t.tx.Exec(`INSERT OR IGNORE INTO notes
 		(highlight_id, source, body, device_text, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		highlightID, source, text, text, formatTime(at), formatTime(now))
+		highlightID, source, text, text, formatTime(at), formatTime(at))
 	if err != nil {
 		return false, fmt.Errorf("add device note: %w", err)
 	}
@@ -43,14 +45,36 @@ func (t *Tx) AddDeviceNote(highlightID int64, source, text string, at, now time.
 	return n > 0, err
 }
 
+const noteColumns = `id, highlight_id, source, body, created_at, updated_at`
+
+// Note returns one live note, or ErrNotFound.
+func (s *Store) Note(id int64) (Note, error) {
+	rows, err := s.db.Query(`SELECT `+noteColumns+` FROM notes WHERE id = ? AND deleted_at IS NULL`, id)
+	if err != nil {
+		return Note{}, err
+	}
+	ns, err := scanNotes(rows)
+	if err != nil {
+		return Note{}, err
+	}
+	if len(ns) == 0 {
+		return Note{}, ErrNotFound
+	}
+	return ns[0], nil
+}
+
 // Notes returns a highlight's notes, oldest first.
 func (s *Store) Notes(highlightID int64) ([]Note, error) {
-	rows, err := s.db.Query(`SELECT id, highlight_id, source, body, created_at, updated_at
+	rows, err := s.db.Query(`SELECT `+noteColumns+`
 		FROM notes WHERE highlight_id = ? AND deleted_at IS NULL
 		ORDER BY created_at, id`, highlightID)
 	if err != nil {
 		return nil, err
 	}
+	return scanNotes(rows)
+}
+
+func scanNotes(rows *sql.Rows) ([]Note, error) {
 	defer rows.Close()
 	var out []Note
 	for rows.Next() {
@@ -58,7 +82,8 @@ func (s *Store) Notes(highlightID int64) ([]Note, error) {
 			n                  Note
 			created, updatedAt sql.NullString
 		)
-		if err := rows.Scan(&n.ID, &n.HighlightID, &n.Source, &n.Body, &created, &updatedAt); err != nil {
+		err := rows.Scan(&n.ID, &n.HighlightID, &n.Source, &n.Body, &created, &updatedAt)
+		if err != nil {
 			return nil, err
 		}
 		if n.CreatedAt, err = parseTime(created); err != nil {
@@ -106,6 +131,17 @@ func (s *Store) UpdateNote(id int64, body string, now time.Time) error {
 // bring a deleted device note back.
 func (s *Store) DeleteNote(id int64, now time.Time) error {
 	return s.execOne(`UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`, formatTime(now), id)
+}
+
+// RestoreNote undoes DeleteNote and returns the note's highlight id.
+func (s *Store) RestoreNote(id int64) (int64, error) {
+	var hid int64
+	err := s.db.QueryRow(`UPDATE notes SET deleted_at = NULL
+		WHERE id = ? AND deleted_at IS NOT NULL RETURNING highlight_id`, id).Scan(&hid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return hid, err
 }
 
 func (s *Store) execOne(q string, args ...any) error {

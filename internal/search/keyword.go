@@ -8,16 +8,20 @@ import (
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
-// Query is a search request. An empty Text lists highlights matching the
-// filters, newest first.
+// Query is a search request. An empty Text with a filter lists the
+// matching highlights, newest first.
 type Query struct {
-	Text   string
-	BookID int64  // 0 means any book
-	Tag    string // "" means any tag
-	Limit  int    // 0 means DefaultLimit
+	Text      string
+	BookID    int64 // 0 means any book
+	Favorites bool  // only favorites
+	Limit     int   // 0 means DefaultLimit
 }
 
 const DefaultLimit = 50
+
+// ListLimit caps listing with no query (a book's highlights, all
+// favorites), where every row is wanted rather than the best few.
+const ListLimit = 1000
 
 // Segment is a run of snippet text; Match marks a matched term. Templates
 // escape Text and wrap matches, so snippets are safe to render as HTML.
@@ -71,10 +75,8 @@ func Keyword(s *store.Store, q Query) ([]Result, error) {
 		where = append(where, "h.book_id = ?")
 		args = append(args, q.BookID)
 	}
-	if q.Tag != "" {
-		where = append(where, `EXISTS (SELECT 1 FROM highlight_tags ht JOIN tags t ON t.id = ht.tag_id
-			WHERE ht.highlight_id = h.id AND t.name = ?)`)
-		args = append(args, q.Tag)
+	if q.Favorites {
+		where = append(where, "h.favorite = 1")
 	}
 	if len(where) == 0 {
 		where = append(where, "1")

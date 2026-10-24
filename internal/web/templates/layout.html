@@ -1,0 +1,31 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Commonplace</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx-2.0.4.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="site">
+  <a class="brand" href="/">Commonplace</a>
+  <nav aria-label="Main">
+    <a href="/"{{if eq .Nav "daily"}} aria-current="page"{{end}}>Daily</a>
+    <a href="/search"{{if eq .Nav "search"}} aria-current="page"{{end}}>Search</a>
+  </nav>
+</header>
+<main>
+{{end}}
+
+{{define "foot"}}
+</main>
+<aside id="help" class="help" hidden aria-label="Keyboard shortcuts">
+  <h2>Keys <span class="hint">Esc closes</span></h2>
+  <p class="hint">Counts work: <kbd>5j</kbd>. In a text field, <kbd>Esc</kbd> returns to normal mode and <kbd>Ctrl</kbd> <kbd>↩</kbd> saves.</p>
+  <dl></dl>
+</aside>
+</body>
+</html>
+{{end}}
