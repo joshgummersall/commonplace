@@ -262,10 +262,14 @@ func parseKind(s string) Kind {
 
 // splitTitleAuthor treats a trailing parenthesized group as the author:
 // "Fooled by Randomness (Incerto) (Taleb, Nassim Nicholas)" yields the
-// title "Fooled by Randomness (Incerto)". This misreads titles that end in
-// a parenthetical but have no author, e.g. "Game Theory (Very Short
-// Introductions)"; the format gives no way to tell them apart.
+// title "Fooled by Randomness (Incerto)". Kindle writes a title with no
+// author as the title plus two spaces, so a line with trailing whitespace
+// has no author even when it ends in a parenthetical, e.g. "Game Theory
+// (Very Short Introductions)  ".
 func splitTitleAuthor(line string) (title, author string) {
+	if strings.TrimRightFunc(line, isSpace) != line {
+		return strings.TrimSpace(line), ""
+	}
 	line = strings.TrimSpace(line)
 	if !strings.HasSuffix(line, ")") {
 		return line, ""
@@ -279,7 +283,7 @@ func splitTitleAuthor(line string) (title, author string) {
 			depth--
 			if depth == 0 {
 				title = strings.TrimSpace(line[:i])
-				author = strings.TrimSpace(line[i+1 : len(line)-1])
+				author = formatAuthors(line[i+1 : len(line)-1])
 				if title == "" {
 					return line, ""
 				}
@@ -288,6 +292,26 @@ func splitTitleAuthor(line string) (title, author string) {
 		}
 	}
 	return line, ""
+}
+
+// formatAuthors tidies Kindle's semicolon-joined author list:
+// "Ann Lee;Bo Chen" becomes "Ann Lee, Bo Chen". Names already in
+// "Last, First" form are kept apart with semicolons instead, so the commas
+// stay unambiguous: "Lee, Ann; Chen, Bo".
+func formatAuthors(s string) string {
+	var names []string
+	sep := ", "
+	for _, name := range strings.Split(s, ";") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if strings.Contains(name, ",") {
+			sep = "; "
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, sep)
 }
 
 func isSpace(r rune) bool {

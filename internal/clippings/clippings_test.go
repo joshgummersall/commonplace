@@ -186,6 +186,10 @@ func TestSplitTitleAuthor(t *testing.T) {
 		{"Nested (Author (Ed.))", "Nested", "Author (Ed.)"},
 		{"(Only Parens)", "(Only Parens)", ""},
 		{"Unbalanced)", "Unbalanced)", ""},
+		{"Field Notes (Pocket Series)  ", "Field Notes (Pocket Series)", ""},
+		{"Tide Tables (Ann Lee;Bo Chen; Cy Diaz)", "Tide Tables", "Ann Lee, Bo Chen, Cy Diaz"},
+		{"Tide Tables (Lee, Ann ;Chen, Bo)", "Tide Tables", "Lee, Ann; Chen, Bo"},
+		{"Tide Tables (Ann Lee;)", "Tide Tables", "Ann Lee"},
 	}
 	for _, tt := range tests {
 		title, author := splitTitleAuthor(tt.in)

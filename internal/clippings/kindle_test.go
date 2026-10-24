@@ -48,14 +48,14 @@ func TestParseKindle(t *testing.T) {
 			locStart: 1522, locEnd: 1522, addedAt: date(2022, 6, 14, 19, 20, 5)},
 		{kind: Bookmark, dialect: Kindle, title: "Notes on Bridges #5", author: "bridges.example.com",
 			locStart: 106, locEnd: 106, addedAt: date(2022, 8, 30, 20, 17, 15)},
-		// Trailing spaces on the title line; the parenthetical is not an
-		// author, but the format can't tell (see splitTitleAuthor).
-		{kind: Highlight, dialect: Kindle, title: "Walden", author: "Or, Life in the Woods", page: "1", locStart: 13, locEnd: 15,
+		// Trailing spaces on the title line mean no author, so the
+		// parenthetical stays in the title (see splitTitleAuthor).
+		{kind: Highlight, dialect: Kindle, title: "Walden (Or, Life in the Woods)", page: "1", locStart: 13, locEnd: 15,
 			addedAt: date(2023, 11, 6, 12, 13, 14)},
 		// No author at all.
 		{kind: Highlight, dialect: Kindle, title: "A Field Guide to Clouds", page: "4", locStart: 49, locEnd: 50,
 			addedAt: date(2023, 11, 16, 8, 2, 41)},
-		{kind: Highlight, dialect: Kindle, title: "Game Theory", author: "Very Short Introductions", page: "6", locStart: 217, locEnd: 218,
+		{kind: Highlight, dialect: Kindle, title: "Game Theory (Very Short Introductions)", page: "6", locStart: 217, locEnd: 218,
 			addedAt: date(2025, 7, 27, 8, 10, 48)},
 		// Series in parens before the author.
 		{kind: Highlight, dialect: Kindle, title: "Fooled by Randomness (Incerto)", author: "Taleb, Nassim Nicholas", page: "14", locStart: 277, locEnd: 278,
