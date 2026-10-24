@@ -14,6 +14,7 @@
   <nav aria-label="Main">
     <a href="/"{{if eq .Nav "daily"}} aria-current="page"{{end}}>Daily</a>
     <a href="/search"{{if eq .Nav "search"}} aria-current="page"{{end}}>Search</a>
+    <a href="/search?fav=1"{{if eq .Nav "favorites"}} aria-current="page"{{end}}>Favorites</a>
   </nav>
 </header>
 <main>

@@ -139,6 +139,10 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		Query:    q,
 		Searched: q.Text != "" || q.BookID != 0 || q.Favorites,
 	}
+	// Favorites is Search with the filter on, but gets its own nav link.
+	if q.Favorites {
+		data.page = page{Title: "Favorites", Nav: "favorites"}
+	}
 	if data.Searched {
 		if err := s.searchResults(r, &data); err != nil {
 			return err

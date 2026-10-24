@@ -321,6 +321,19 @@
 
   // ---- page lifecycle --------------------------------------------------
 
+  // Favorites is Search with the filter on, so the nav link follows the
+  // checkbox as results update in place.
+  function syncNav() {
+    const fav = document.getElementById("fav")?.checked;
+    for (const a of document.querySelectorAll("header nav a")) {
+      const u = new URL(a.href);
+      const on = u.pathname === "/search" && u.searchParams.has("fav") === !!fav;
+      if (on) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    }
+    document.title = (fav ? "Favorites" : "Search") + " · Commonplace";
+  }
+
   // htmx replaces items on favorite, bury, and note edits; keep the
   // selection on the same position.
   document.addEventListener("htmx:afterSettle", (e) => {
@@ -328,6 +341,7 @@
     // similar highlight once the panel has loaded.
     if (e.target.classList?.contains("similar-body") && location.hash === "#similar") similarPanel();
     if (e.target.id === "results") {
+      syncNav();
       current = -1;
       try {
         sessionStorage.removeItem(storeKey);
