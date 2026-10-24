@@ -2,3 +2,6 @@
 *.db-shm
 *.db-wal
 bin/
+
+# Full personal exports; only trimmed fixtures are committed
+testdata/**/*-full.*
