@@ -41,7 +41,7 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 	s := &Store{db: db}
-	if err := s.migrate(); err != nil {
+	if err := s.migrateTo(-1); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -101,17 +101,25 @@ func (s *Store) SchemaVersion() (int, error) {
 	return v, err
 }
 
-func (s *Store) migrate() error {
+// migrateTo applies migrations up to version target, or all of them when
+// target is negative. Tests use a target to build an older schema.
+func (s *Store) migrateTo(target int) error {
 	migrations, err := loadMigrations()
 	if err != nil {
 		return err
+	}
+	if target >= 0 && target < len(migrations) {
+		migrations = migrations[:target]
 	}
 	current, err := s.SchemaVersion()
 	if err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if current > len(migrations) {
+	if target < 0 && current > len(migrations) {
 		return fmt.Errorf("database schema version %d is newer than this binary supports (%d)", current, len(migrations))
+	}
+	if current >= len(migrations) {
+		return nil
 	}
 	for _, m := range migrations[current:] {
 		tx, err := s.db.Begin()

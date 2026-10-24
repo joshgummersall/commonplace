@@ -37,7 +37,7 @@ func TestImportCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "0 added, 0 updated to a newer version, 3 unchanged") {
+	if !strings.Contains(out, "0 added, 0 updated to a newer version, 4 unchanged") {
 		t.Errorf("re-import stdout:\n%s", out)
 	}
 }

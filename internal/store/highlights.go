@@ -14,7 +14,6 @@ type Highlight struct {
 	BookID        int64
 	Source        string
 	Text          string
-	Note          string
 	Location      string
 	Page          string
 	LocStart      int
@@ -64,7 +63,7 @@ func (t *Tx) BookID(title, author string) (int64, error) {
 	return res.LastInsertId()
 }
 
-const highlightColumns = `id, book_id, source, text, note, location, page, loc_start, loc_end,
+const highlightColumns = `id, book_id, source, text, location, page, loc_start, loc_end,
 	highlighted_at, imported_at, hash, favorite, dismissed, last_seen, weight`
 
 // HighlightByHash returns the book's highlight with this text hash, or nil.
@@ -106,9 +105,9 @@ func (t *Tx) HighlightsNear(bookID int64, locStart, locEnd int, page string) ([]
 // InsertHighlight inserts h and sets h.ID.
 func (t *Tx) InsertHighlight(h *Highlight) error {
 	res, err := t.tx.Exec(`INSERT INTO highlights
-		(book_id, source, text, note, location, page, loc_start, loc_end, highlighted_at, imported_at, hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		h.BookID, h.Source, h.Text, h.Note, h.Location, h.Page, nullInt(h.LocStart), nullInt(h.LocEnd),
+		(book_id, source, text, location, page, loc_start, loc_end, highlighted_at, imported_at, hash)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		h.BookID, h.Source, h.Text, h.Location, h.Page, nullInt(h.LocStart), nullInt(h.LocEnd),
 		nullTime(h.HighlightedAt), formatTime(h.ImportedAt), h.Hash)
 	if err != nil {
 		return fmt.Errorf("insert highlight: %w", err)
@@ -118,7 +117,7 @@ func (t *Tx) InsertHighlight(h *Highlight) error {
 }
 
 // ReplaceHighlightText swaps in a newer version of a highlight's text and
-// position, keeping its id, note, tags, favorite, and history.
+// position, keeping its id, notes, tags, favorite, and history.
 func (t *Tx) ReplaceHighlightText(id int64, h *Highlight) error {
 	_, err := t.tx.Exec(`UPDATE highlights SET
 		source = ?, text = ?, location = ?, page = ?, loc_start = ?, loc_end = ?, highlighted_at = ?, hash = ?
@@ -132,20 +131,22 @@ func (t *Tx) ReplaceHighlightText(id int64, h *Highlight) error {
 }
 
 // MergeInto folds highlight dropID into keepID and deletes dropID: keepID
-// takes the given note, the union of both tag sets, favorite if either was,
+// takes dropID's notes, the union of both tag sets, favorite if either was,
 // and the later last_seen.
-func (t *Tx) MergeInto(keepID, dropID int64, note string) error {
+func (t *Tx) MergeInto(keepID, dropID int64) error {
 	stmts := []struct {
 		q    string
 		args []any
 	}{
 		{`INSERT OR IGNORE INTO highlight_tags (highlight_id, tag_id)
 			SELECT ?, tag_id FROM highlight_tags WHERE highlight_id = ?`, []any{keepID, dropID}},
+		// OR IGNORE skips device notes keepID already has; the delete below
+		// cascades to them.
+		{`UPDATE OR IGNORE notes SET highlight_id = ? WHERE highlight_id = ?`, []any{keepID, dropID}},
 		{`UPDATE highlights SET
-			note = ?,
 			favorite = favorite OR (SELECT favorite FROM highlights WHERE id = ?),
 			last_seen = max(coalesce(last_seen, ''), coalesce((SELECT last_seen FROM highlights WHERE id = ?), ''))
-			WHERE id = ?`, []any{note, dropID, dropID, keepID}},
+			WHERE id = ?`, []any{dropID, dropID, keepID}},
 		{`UPDATE highlights SET last_seen = NULL WHERE id = ? AND last_seen = ''`, []any{keepID}},
 		{`DELETE FROM highlights WHERE id = ?`, []any{dropID}},
 	}
@@ -157,12 +158,6 @@ func (t *Tx) MergeInto(keepID, dropID int64, note string) error {
 	return nil
 }
 
-// SetNote replaces a highlight's note.
-func (t *Tx) SetNote(id int64, note string) error {
-	_, err := t.tx.Exec(`UPDATE highlights SET note = ? WHERE id = ?`, note, id)
-	return err
-}
-
 func scanHighlights(rows *sql.Rows) ([]Highlight, error) {
 	defer rows.Close()
 	var out []Highlight
@@ -172,7 +167,7 @@ func scanHighlights(rows *sql.Rows) ([]Highlight, error) {
 			locStart, locEnd                sql.NullInt64
 			highlightedAt, imported, seenAt sql.NullString
 		)
-		if err := rows.Scan(&h.ID, &h.BookID, &h.Source, &h.Text, &h.Note, &h.Location, &h.Page,
+		if err := rows.Scan(&h.ID, &h.BookID, &h.Source, &h.Text, &h.Location, &h.Page,
 			&locStart, &locEnd, &highlightedAt, &imported, &h.Hash, &h.Favorite, &h.Dismissed,
 			&seenAt, &h.Weight); err != nil {
 			return nil, err

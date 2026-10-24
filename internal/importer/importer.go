@@ -4,7 +4,6 @@ package importer
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/joshgummersall/commonplace/internal/clippings"
@@ -18,7 +17,7 @@ type Result struct {
 	Unchanged int // newest version already stored
 	Older     int // a newer version is already stored; skipped
 	Merged    int // older versions in the file, folded into the newest
-	Notes     int // notes attached to a highlight
+	Notes     int // device notes newly attached to a highlight
 	Orphans   int // notes with no highlight, stored as highlights
 	Bookmarks int // skipped
 	// Changed lists highlights whose text is new or replaced, for embedding.
@@ -145,8 +144,7 @@ func storeVersion(tx *store.Tx, v version, now time.Time, r *Result) error {
 		if other.ID == keep.ID {
 			continue
 		}
-		keep.Note = mergeNote(keep.Note, other.Note)
-		if err := tx.MergeInto(keep.ID, other.ID, keep.Note); err != nil {
+		if err := tx.MergeInto(keep.ID, other.ID); err != nil {
 			return err
 		}
 	}
@@ -185,13 +183,15 @@ func importNote(tx *store.Tx, c clippings.Clipping, now time.Time, r *Result) er
 		return err
 	}
 	if target := noteTarget(near, c.LocStart); target != nil {
-		note := mergeNote(target.Note, c.Text)
-		if note != target.Note {
-			if err := tx.SetNote(target.ID, note); err != nil {
-				return err
-			}
+		added, err := tx.AddDeviceNote(target.ID, string(c.Dialect), c.Text, c.AddedAt, now)
+		if err != nil {
+			return err
 		}
-		r.Notes++
+		if added {
+			r.Notes++
+		} else {
+			r.Unchanged++
+		}
 		return nil
 	}
 
@@ -223,18 +223,4 @@ func noteTarget(near []store.Highlight, loc int) *store.Highlight {
 		}
 	}
 	return best
-}
-
-// mergeNote appends add to existing unless it's already there, so
-// re-importing doesn't duplicate notes.
-func mergeNote(existing, add string) string {
-	add = strings.TrimSpace(add)
-	switch {
-	case add == "" || strings.Contains(existing, add):
-		return existing
-	case existing == "":
-		return add
-	default:
-		return existing + "\n\n" + add
-	}
 }

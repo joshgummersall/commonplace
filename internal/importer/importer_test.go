@@ -95,25 +95,29 @@ func TestImportNotes(t *testing.T) {
 
 	r := mustImport(t, s, clips)
 	checkResult(t, r, Result{Added: 3, Notes: 1})
-	var note string
-	if err := s.DB().QueryRow(`SELECT note FROM highlights WHERE loc_start = 200`).Scan(&note); err != nil {
+	var hid int64
+	if err := s.DB().QueryRow(`SELECT id FROM highlights WHERE loc_start = 200`).Scan(&hid); err != nil {
 		t.Fatal(err)
 	}
-	if note != "obstacle is the way" {
-		t.Errorf("note = %q", note)
+	checkNotes := func() {
+		t.Helper()
+		notes, err := s.Notes(hid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(notes) != 1 || notes[0].Body != "obstacle is the way" || notes[0].Source != "kindle" ||
+			!notes[0].CreatedAt.Equal(time.Date(2026, 1, 5, 9, 15, 30, 0, time.UTC)) {
+			t.Errorf("notes = %+v", notes)
+		}
 	}
+	checkNotes()
 	if n := count(t, s, `SELECT count(*) FROM highlights_fts WHERE highlights_fts MATCH 'obstacle'`); n != 1 {
 		t.Errorf("note not searchable: %d FTS matches", n)
 	}
 
 	r = mustImport(t, s, clips)
-	checkResult(t, r, Result{Unchanged: 3, Notes: 1})
-	if err := s.DB().QueryRow(`SELECT note FROM highlights WHERE loc_start = 200`).Scan(&note); err != nil {
-		t.Fatal(err)
-	}
-	if note != "obstacle is the way" {
-		t.Errorf("note after re-import = %q, want it unduplicated", note)
-	}
+	checkResult(t, r, Result{Unchanged: 4})
+	checkNotes()
 }
 
 func TestImportOrphanNote(t *testing.T) {
@@ -136,7 +140,10 @@ func TestImportNewerVersionUpdatesInPlace(t *testing.T) {
 	r := mustImport(t, s, []clippings.Clipping{v1})
 	id := r.Changed[0]
 	db := s.DB()
-	if _, err := db.Exec(`UPDATE highlights SET favorite = 1, note = 'mine' WHERE id = ?`, id); err != nil {
+	if _, err := db.Exec(`UPDATE highlights SET favorite = 1 WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddNote(id, "mine", now); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO embeddings (highlight_id, model, dims, vector, created_at)
@@ -150,14 +157,18 @@ func TestImportNewerVersionUpdatesInPlace(t *testing.T) {
 		t.Errorf("Changed = %v, want [%d]", r.Changed, id)
 	}
 	var (
-		text, note string
-		fav        bool
+		text string
+		fav  bool
 	)
-	if err := db.QueryRow(`SELECT text, note, favorite FROM highlights WHERE id = ?`, id).Scan(&text, &note, &fav); err != nil {
+	if err := db.QueryRow(`SELECT text, favorite FROM highlights WHERE id = ?`, id).Scan(&text, &fav); err != nil {
 		t.Fatal(err)
 	}
-	if text != v2.Text || note != "mine" || !fav {
-		t.Errorf("row = %q, %q, %v; want new text with note and favorite kept", text, note, fav)
+	notes, err := s.Notes(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text != v2.Text || !fav || len(notes) != 1 || notes[0].Body != "mine" {
+		t.Errorf("row = %q, favorite %v, notes %+v; want new text with note and favorite kept", text, fav, notes)
 	}
 	if n := count(t, s, `SELECT count(*) FROM embeddings WHERE highlight_id = ?`, id); n != 0 {
 		t.Error("stale embedding was not deleted")
@@ -180,12 +191,17 @@ func TestImportMergesStoredRows(t *testing.T) {
 	for _, q := range []string{
 		`INSERT INTO tags (id, name) VALUES (1, 'risk'), (2, 'bias')`,
 		`INSERT INTO highlight_tags VALUES (` + itoa(idA) + `, 1), (` + itoa(idB) + `, 2)`,
-		`UPDATE highlights SET note = 'note a' WHERE id = ` + itoa(idA),
-		`UPDATE highlights SET note = 'note b', favorite = 1, last_seen = '2026-02-01T00:00:00Z' WHERE id = ` + itoa(idB),
+		`UPDATE highlights SET favorite = 1, last_seen = '2026-02-01T00:00:00Z' WHERE id = ` + itoa(idB),
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
+	}
+	if _, err := s.AddNote(idA, "note a", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddNote(idB, "note b", now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
 	}
 
 	r = mustImport(t, s, []clippings.Clipping{clip(10, 11, 3, a.Text+" "+b.Text)})
@@ -194,18 +210,25 @@ func TestImportMergesStoredRows(t *testing.T) {
 		t.Fatalf("%d rows, want 1", n)
 	}
 	var (
-		id         int64
-		note, seen string
-		fav        bool
+		id   int64
+		seen string
+		fav  bool
 	)
-	if err := db.QueryRow(`SELECT id, note, favorite, last_seen FROM highlights`).Scan(&id, &note, &fav, &seen); err != nil {
+	if err := db.QueryRow(`SELECT id, favorite, last_seen FROM highlights`).Scan(&id, &fav, &seen); err != nil {
 		t.Fatal(err)
 	}
 	if id != idB {
 		t.Errorf("kept id %d, want the more recent row %d", id, idB)
 	}
-	if note != "note b\n\nnote a" || !fav || seen != "2026-02-01T00:00:00Z" {
-		t.Errorf("merged row note=%q favorite=%v last_seen=%q", note, fav, seen)
+	if !fav || seen != "2026-02-01T00:00:00Z" {
+		t.Errorf("merged row favorite=%v last_seen=%q", fav, seen)
+	}
+	notes, err := s.Notes(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notes) != 2 || notes[0].Body != "note a" || notes[1].Body != "note b" {
+		t.Errorf("merged notes = %+v, want both, oldest first", notes)
 	}
 	if n := count(t, s, `SELECT count(*) FROM highlight_tags WHERE highlight_id = ?`, id); n != 2 {
 		t.Errorf("merged row has %d tags, want 2", n)
