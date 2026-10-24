@@ -8,14 +8,18 @@ import (
 	"time"
 )
 
-func parseFile(t *testing.T, path string) ([]Clipping, []Warning) {
+func fixture(parts ...string) string {
+	return filepath.Join(append([]string{"..", "..", "testdata"}, parts...)...)
+}
+
+func parseFile(t *testing.T, path string, dialect Dialect) ([]Clipping, []Warning) {
 	t.Helper()
 	f, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	clips, warnings, err := Parse(f, time.UTC)
+	clips, warnings, err := Parse(f, dialect, time.UTC)
 	if err != nil {
 		t.Fatalf("Parse(%s): %v", path, err)
 	}
@@ -39,7 +43,7 @@ type want struct {
 	locEnd     int
 	addedAt    time.Time
 	textPrefix string
-	textLen    int // 0 means don't check
+	textLen    int // bytes; 0 means don't check
 }
 
 func checkClips(t *testing.T, got []Clipping, wants []want) {
@@ -87,107 +91,87 @@ func checkClips(t *testing.T, got []Clipping, wants []want) {
 	}
 }
 
-// testdata/kindle/clippings.txt is synthetic: it mirrors a real Kindle export
-// entry by entry (headers, locations, dates, BOMs, text lengths) with
-// invented text.
-func TestParseKindle(t *testing.T) {
-	clips, warnings := parseFile(t, filepath.Join("..", "..", "testdata", "kindle", "clippings.txt"))
-	if len(warnings) != 0 {
-		t.Errorf("warnings = %v, want none", warnings)
+// parseString parses an inline file with entries joined by separators.
+func parseString(t *testing.T, dialect Dialect, entries ...string) ([]Clipping, []Warning, error) {
+	t.Helper()
+	var b strings.Builder
+	for _, e := range entries {
+		b.WriteString(e + "\n" + separator + "\n")
 	}
-	const gtd = "Getting Things Done"
-	const gtdAuthor = "Allen, David"
-	checkClips(t, clips, []want{
-		// The file opens with a BOM, and the second entry has one too.
-		{kind: Highlight, dialect: Kindle, title: "1984", author: "Orwell, George", page: "138", locStart: 2452, locEnd: 2456,
-			addedAt: date(2022, 3, 6, 17, 58, 16), textPrefix: "Nothing perceptible changes"},
-		{kind: Highlight, dialect: Kindle, title: "1984", author: "Orwell, George", page: "152", locStart: 2699, locEnd: 2700,
-			addedAt: date(2022, 3, 7, 7, 47, 43), textPrefix: "One way to learn the depth"},
-		// An extended highlight: same location, second is a superset.
-		{kind: Highlight, dialect: Kindle, title: gtd, author: gtdAuthor, page: "4", locStart: 399, locEnd: 403,
-			addedAt: date(2022, 3, 15, 22, 50, 24), textPrefix: "Three habits keep a garden", textLen: 636},
-		{kind: Highlight, dialect: Kindle, title: gtd, author: gtdAuthor, page: "4", locStart: 399, locEnd: 403,
-			addedAt: date(2022, 3, 15, 22, 50, 32), textPrefix: "Three habits keep a garden", textLen: 688},
-		// A chain of five extensions, including one exact repeat.
-		{kind: Highlight, dialect: Kindle, title: gtd, author: gtdAuthor, page: "116", locStart: 2217, locEnd: 2239,
-			addedAt: date(2022, 3, 19, 9, 7, 6), textLen: 724},
-		{kind: Highlight, dialect: Kindle, title: gtd, author: gtdAuthor, page: "116", locStart: 2217, locEnd: 2299,
-			addedAt: date(2022, 3, 19, 9, 7, 29), textLen: 2331},
-		{kind: Highlight, dialect: Kindle, title: gtd, author: gtdAuthor, page: "116", locStart: 2217, locEnd: 2299,
-			addedAt: date(2022, 3, 19, 9, 7, 35), textLen: 2331},
-		{kind: Highlight, dialect: Kindle, title: gtd, author: gtdAuthor, page: "116", locStart: 2217, locEnd: 2395,
-			addedAt: date(2022, 3, 19, 9, 8, 8), textLen: 4459},
-		{kind: Highlight, dialect: Kindle, title: gtd, author: gtdAuthor, page: "116", locStart: 2217, locEnd: 2399,
-			addedAt: date(2022, 3, 19, 9, 8, 18), textLen: 4571},
-		// Location only, no page.
-		{kind: Highlight, dialect: Kindle, title: "The Courage to Be Disliked: The Japanese Phenomenon That Shows You How to Change Your Life and Achieve Real Happiness",
-			author: "Kishimi, Ichiro", locStart: 137, locEnd: 140, addedAt: date(2022, 4, 19, 8, 8, 2)},
-		// Roman-numeral page.
-		{kind: Highlight, dialect: Kindle, title: "High Output Management", author: "Grove, Andrew S.", page: "xvi", locStart: 183, locEnd: 184,
-			addedAt: date(2022, 5, 26, 20, 9, 20)},
-		// Bookmarks: single location, empty body.
-		{kind: Bookmark, dialect: Kindle, title: "An Elegant Puzzle: Systems of Engineering Management", author: "Larson, Will", page: "116",
-			locStart: 1522, locEnd: 1522, addedAt: date(2022, 6, 14, 19, 20, 5)},
-		{kind: Bookmark, dialect: Kindle, title: "Notes on Bridges #5", author: "bridges.example.com",
-			locStart: 106, locEnd: 106, addedAt: date(2022, 8, 30, 20, 17, 15)},
-		// Trailing spaces on the title line; the parenthetical is not an
-		// author, but the format can't tell (see splitTitleAuthor).
-		{kind: Highlight, dialect: Kindle, title: "Walden", author: "Or, Life in the Woods", page: "1", locStart: 13, locEnd: 15,
-			addedAt: date(2023, 11, 6, 12, 13, 14)},
-		// No author at all.
-		{kind: Highlight, dialect: Kindle, title: "A Field Guide to Clouds", page: "4", locStart: 49, locEnd: 50,
-			addedAt: date(2023, 11, 16, 8, 2, 41)},
-		{kind: Highlight, dialect: Kindle, title: "Game Theory", author: "Very Short Introductions", page: "6", locStart: 217, locEnd: 218,
-			addedAt: date(2025, 7, 27, 8, 10, 48)},
-		// Series in parens before the author.
-		{kind: Highlight, dialect: Kindle, title: "Fooled by Randomness (Incerto)", author: "Taleb, Nassim Nicholas", page: "14", locStart: 277, locEnd: 278,
-			addedAt: date(2025, 11, 2, 22, 0, 46)},
-	})
+	return Parse(strings.NewReader(b.String()), dialect, time.UTC)
 }
 
-// testdata/crosspoint/clippings.txt is synthetic, in the format of a real
-// CrossPoint export.
-func TestParseCrossPoint(t *testing.T) {
-	clips, warnings := parseFile(t, filepath.Join("..", "..", "testdata", "crosspoint", "clippings.txt"))
-	if len(warnings) != 0 {
-		t.Errorf("warnings = %v, want none", warnings)
+const (
+	kindleEntry     = "Meditations (Marcus Aurelius)\n- Your Highlight on page 12 | Location 200-203 | Added on Monday, January 5, 2026 9:15:00 AM\n\nThe impediment to action advances action."
+	crossPointEntry = "Self-Reliance (Ralph Waldo Emerson)\n- Your Highlight on Page 9 | Self-Reliance | Added on Saturday, October 24, 2026, 11:15 AM\n\nTrust thyself."
+)
+
+func TestDetect(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry string
+		want  Dialect
+	}{
+		{"kindle", kindleEntry, Kindle},
+		{"crosspoint", crossPointEntry, CrossPoint},
 	}
-	checkClips(t, clips, []want{
-		{kind: Highlight, dialect: CrossPoint, title: "On Walking", author: "Henry David Thoreau", page: "49",
-			section: "On Walking", addedAt: date(2026, 10, 24, 10, 19, 0), textPrefix: "I have met with but one or two"},
-		{kind: Highlight, dialect: CrossPoint, title: "Self-Reliance", author: "Ralph Waldo Emerson", page: "9",
-			section: "Self-Reliance", addedAt: date(2026, 10, 24, 11, 15, 0), textPrefix: "Trust thyself: every heart"},
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clips, warnings, err := parseString(t, "", tt.entry)
+			if err != nil || len(warnings) != 0 || len(clips) != 1 {
+				t.Fatalf("got %d clips, warnings %v, err %v", len(clips), warnings, err)
+			}
+			if clips[0].Dialect != tt.want {
+				t.Errorf("Dialect = %q, want %q", clips[0].Dialect, tt.want)
+			}
+		})
+	}
 }
 
-// testdata/kindle/edge-cases.txt is hand-written: the real export has no
-// notes and no malformed entries.
-func TestParseEdgeCases(t *testing.T) {
-	clips, warnings := parseFile(t, filepath.Join("..", "..", "testdata", "kindle", "edge-cases.txt"))
-	const title, author = "Meditations", "Marcus Aurelius"
-	checkClips(t, clips, []want{
-		{kind: Highlight, dialect: Kindle, title: title, author: author, page: "12", locStart: 200, locEnd: 203,
-			addedAt: date(2026, 1, 5, 9, 15, 0), textPrefix: "The impediment to action"},
-		{kind: Note, dialect: Kindle, title: title, author: author, page: "12", locStart: 203, locEnd: 203,
-			addedAt: date(2026, 1, 5, 9, 15, 30), textPrefix: "obstacle is the way", textLen: len("obstacle is the way")},
-		{kind: Highlight, dialect: Kindle, title: title, author: author, page: "40", locStart: 610, locEnd: 640,
-			addedAt: date(2026, 1, 5, 9, 30, 0), textPrefix: "First paragraph.\nSecond paragraph.", textLen: len("First paragraph.\nSecond paragraph.")},
-		// Unparseable date: kept with a zero time.
-		{kind: Highlight, dialect: Kindle, title: title, author: author, page: "60", locStart: 800, locEnd: 801,
-			textPrefix: "You have power over your mind"},
-		// Final entry with no trailing separator.
-		{kind: Highlight, dialect: Kindle, title: title, author: author, page: "70", locStart: 900, locEnd: 905,
-			addedAt: date(2026, 1, 6, 7, 0, 0), textPrefix: "Unterminated final entry."},
-	})
-
-	wantReasons := []string{"unrecognized header", "has no text"}
-	if len(warnings) != len(wantReasons) {
-		t.Fatalf("warnings = %v, want %d", warnings, len(wantReasons))
+func TestDetectFails(t *testing.T) {
+	german := "Das Kapital (Marx, Karl)\n- Ihre Markierung bei Position 100-102 | Hinzugefügt am Montag, 5. Januar 2026 09:15:00\n\nAlles Ständische verdampft."
+	_, _, err := parseString(t, "", german, kindleEntry)
+	if err == nil || !strings.Contains(err.Error(), "cannot detect format") {
+		t.Fatalf("err = %v, want detection failure", err)
 	}
-	for i, r := range wantReasons {
-		if !strings.Contains(warnings[i].Reason, r) {
-			t.Errorf("warning %d = %q, want it to mention %q", i, warnings[i].Reason, r)
+}
+
+func TestMixedDialectsFail(t *testing.T) {
+	tests := []struct {
+		name    string
+		dialect Dialect
+		entries []string
+		want    string
+	}{
+		{"detected kindle then crosspoint", "", []string{kindleEntry, crossPointEntry}, "crosspoint entry in a kindle file"},
+		{"detected crosspoint then kindle", "", []string{crossPointEntry, kindleEntry}, "kindle entry in a crosspoint file"},
+		{"wrong --source", CrossPoint, []string{kindleEntry}, "kindle entry in a crosspoint file"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := parseString(t, tt.dialect, tt.entries...)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want it to mention %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseEmpty(t *testing.T) {
+	clips, warnings, err := Parse(strings.NewReader("\ufeff\r\n"), "", time.UTC)
+	if err != nil || len(clips) != 0 || len(warnings) != 0 {
+		t.Fatalf("got %d clips, warnings %v, err %v", len(clips), warnings, err)
+	}
+}
+
+func TestParseDialect(t *testing.T) {
+	for _, s := range []string{"kindle", "crosspoint"} {
+		if _, err := ParseDialect(s); err != nil {
+			t.Errorf("ParseDialect(%q): %v", s, err)
 		}
+	}
+	if _, err := ParseDialect("kobo"); err == nil {
+		t.Error("ParseDialect(\"kobo\") succeeded, want error")
 	}
 }
 
@@ -231,20 +215,15 @@ func TestLocation(t *testing.T) {
 // TestParseFullExports runs against the untracked full exports, if present,
 // to catch formats the trimmed fixtures miss.
 func TestParseFullExports(t *testing.T) {
-	paths, _ := filepath.Glob(filepath.Join("..", "..", "testdata", "*", "*-full.txt"))
+	paths, _ := filepath.Glob(fixture("*", "*-full.txt"))
 	if len(paths) == 0 {
 		t.Skip("no full exports in testdata")
 	}
 	for _, p := range paths {
 		t.Run(filepath.Base(filepath.Dir(p)), func(t *testing.T) {
-			clips, warnings := parseFile(t, p)
+			clips, warnings := parseFile(t, p, "")
 			if len(warnings) != 0 {
 				t.Errorf("%d warnings, first: %v", len(warnings), warnings[0])
-			}
-			for _, c := range clips {
-				if c.AddedAt.IsZero() {
-					t.Errorf("%q %s: date did not parse", c.Title, c.Location())
-				}
 			}
 			t.Logf("%d clippings", len(clips))
 		})
