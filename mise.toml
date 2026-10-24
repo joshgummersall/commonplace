@@ -1,13 +1,21 @@
 [tools]
 go = "1.26.5"
+watchexec = "2.8.0"
 
 [tasks.fmt]
 description = "Format Go code"
 run = "gofmt -w ./cmd ./internal"
 
 [tasks.dev]
-description = "Run the CLI from source"
-run = "go run ./cmd/cmpl"
+description = "Serve the app with live reload (set COMMONPLACE_DB to use another database)"
+# Templates and static files reload per request through --dev. Go and SQL
+# changes rebuild and restart the server. watchexec runs the command in a
+# shell; exec makes cmpl the process it signals, so the old server always
+# releases its port.
+run = """
+watchexec --restart --exts go,sql --watch cmd --watch internal -- \
+  'go build -o bin/cmpl ./cmd/cmpl && exec bin/cmpl serve --dev internal/web'
+"""
 
 [tasks.test]
 description = "Run Go tests"
@@ -19,7 +27,10 @@ run = "go vet ./..."
 
 [tasks.build]
 description = "Build the CLI into bin/"
-run = "mkdir -p bin && go build -o bin/cmpl ./cmd/cmpl"
+run = """
+mkdir -p bin
+go build -ldflags "-X github.com/joshgummersall/commonplace/internal/cli.version=$(git describe --tags --always --dirty)" -o bin/cmpl ./cmd/cmpl
+"""
 
 [tasks.clean]
 description = "Remove build artifacts"

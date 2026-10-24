@@ -1,0 +1,45 @@
+version: 2
+
+builds:
+  - main: ./cmd/cmpl
+    binary: cmpl
+    env:
+      # modernc.org/sqlite is pure Go, so cross-compiling needs no C toolchain.
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/joshgummersall/commonplace/internal/cli.version={{.Version}}
+
+archives:
+  - formats: [binary]
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+homebrew_casks:
+  - repository:
+      owner: joshgummersall
+      name: homebrew-commonplace
+      git:
+        url: "ssh://git@github.com/joshgummersall/homebrew-commonplace.git"
+        private_key: "{{ .Env.HOMEBREW_TAP_DEPLOY_KEY_PATH }}"
+    directory: Casks
+    homepage: https://github.com/joshgummersall/commonplace
+    description: Import e-reader highlights, search them by words and meaning, and resurface them daily
+    binaries:
+      - cmpl
+    dependencies:
+      - formula: ollama
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}"]
+          end

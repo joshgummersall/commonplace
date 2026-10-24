@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: go test ./...
+
+      - name: fmt
+        run: |
+          gofmt_out=$(gofmt -l .)
+          if [ -n "$gofmt_out" ]; then
+            echo "Files not formatted:"
+            echo "$gofmt_out"
+            exit 1
+          fi
+
+      - name: configure ssh
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}" > ~/.ssh/homebrew-tap
+          chmod 600 ~/.ssh/homebrew-tap
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          # Pin the GoReleaser CLI rather than tracking latest, which the
+          # action resolves to v2 anyway while warning about it — and would
+          # silently follow across a future major. v2.19 is the floor: the
+          # cask's hooks.post.install_steps key and .StagedPath field were
+          # added there.
+          version: "~> v2.19"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_DEPLOY_KEY_PATH: /home/runner/.ssh/homebrew-tap
