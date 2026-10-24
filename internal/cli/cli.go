@@ -77,6 +77,7 @@ $` + dbEnvVar + ` or --db.`,
 	root.CompletionOptions.DisableDefaultCmd = true
 
 	root.AddCommand(
+		a.newImportCommand(),
 		a.newVersionCommand(),
 	)
 	return root
