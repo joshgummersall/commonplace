@@ -1,0 +1,31 @@
+[tools]
+go = "1.26.5"
+
+[tasks.fmt]
+description = "Format Go code"
+run = "gofmt -w ./cmd ./internal"
+
+[tasks.dev]
+description = "Run the CLI from source"
+run = "go run ./cmd/cmpl"
+
+[tasks.test]
+description = "Run Go tests"
+run = "go test ./..."
+
+[tasks.vet]
+description = "Run go vet"
+run = "go vet ./..."
+
+[tasks.build]
+description = "Build the CLI into bin/"
+run = "mkdir -p bin && go build -o bin/cmpl ./cmd/cmpl"
+
+[tasks.clean]
+description = "Remove build artifacts"
+run = "rm -rf bin"
+
+[tasks.install]
+description = "Build cmpl and install it to ~/.local/bin"
+depends = ["build"]
+run = "mkdir -p ~/.local/bin && cp bin/cmpl ~/.local/bin/cmpl"
