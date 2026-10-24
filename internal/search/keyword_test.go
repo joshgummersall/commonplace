@@ -1,6 +1,7 @@
 package search
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -232,5 +233,53 @@ func TestKeywordFavorites(t *testing.T) {
 	}
 	if rs := mustSearch(t, s, Query{Text: "impediment", Favorites: true}); len(rs) != 0 {
 		t.Errorf("non-favorite matched with the filter on: %v", titles(rs))
+	}
+}
+
+func TestKeywordPaging(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var clips []clippings.Clipping
+	for i := range 23 {
+		// Every highlight matches "river"; repeats vary the bm25 score, and
+		// some ties exercise the id tie-break.
+		text := fmt.Sprintf("Passage %d about the river.%s", i, strings.Repeat(" river", i%4))
+		clips = append(clips, clippings.Clipping{Kind: clippings.Highlight, Title: "Siddhartha", Author: "Hesse",
+			LocStart: 10 * (i + 1), LocEnd: 10*(i+1) + 1, AddedAt: at.Add(time.Duration(i%5) * time.Hour), Text: text})
+	}
+	if _, err := importer.Import(s, clips, at); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, base := range []Query{{Text: "river"}, {BookID: 1}} {
+		all := mustSearch(t, s, Query{Text: base.Text, BookID: base.BookID, Limit: 100})
+		if len(all) != 23 {
+			t.Fatalf("%+v: %d results, want 23", base, len(all))
+		}
+		n, err := Count(s, base)
+		if err != nil || n != 23 {
+			t.Errorf("%+v: Count = %d, %v; want 23", base, n, err)
+		}
+		var paged []int64
+		for off := 0; off < 30; off += 10 {
+			q := base
+			q.Limit, q.Offset = 10, off
+			for _, r := range mustSearch(t, s, q) {
+				paged = append(paged, r.ID)
+			}
+		}
+		if len(paged) != len(all) {
+			t.Fatalf("%+v: pages returned %d rows, want %d", base, len(paged), len(all))
+		}
+		for i := range all {
+			if paged[i] != all[i].ID {
+				t.Errorf("%+v: row %d is %d paged, %d unpaged", base, i, paged[i], all[i].ID)
+				break
+			}
+		}
 	}
 }

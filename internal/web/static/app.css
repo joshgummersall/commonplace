@@ -171,6 +171,8 @@ button.link {
 
 .htmx-request { opacity: 0.6; transition: opacity 120ms; }
 
+.load-more { align-self: center; }
+
 /* Search */
 
 .search { margin-bottom: 1.5rem; }

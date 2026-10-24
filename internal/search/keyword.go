@@ -14,14 +14,12 @@ type Query struct {
 	Text      string
 	BookID    int64 // 0 means any book
 	Favorites bool  // only favorites
-	Limit     int   // 0 means DefaultLimit
+	Limit     int   // 0 means PageSize
+	Offset    int   // rows to skip, for loading the next page
 }
 
-const DefaultLimit = 50
-
-// ListLimit caps listing with no query (a book's highlights, all
-// favorites), where every row is wanted rather than the best few.
-const ListLimit = 1000
+// PageSize is how many results a page of search holds.
+const PageSize = 50
 
 // Segment is a run of snippet text; Match marks a matched term. Templates
 // escape Text and wrap matches, so snippets are safe to render as HTML.
@@ -55,56 +53,34 @@ const (
 // that say it.
 const bm25Weights = "1.0, 0.8, 0.4, 0.4"
 
-// Keyword runs a full-text search with bm25 ranking.
+// Keyword runs a full-text search with bm25 ranking, one page at a time.
+// Ordering breaks ties on id, so pages don't overlap or skip rows.
 func Keyword(s *store.Store, q Query) ([]Result, error) {
 	limit := q.Limit
 	if limit <= 0 {
-		limit = DefaultLimit
+		limit = PageSize
 	}
-	match := ftsQuery(q.Text)
-
-	var (
-		where []string
-		args  []any
-	)
-	if match != "" {
-		where = append(where, "highlights_fts MATCH ?")
-		args = append(args, match)
-	}
-	if q.BookID != 0 {
-		where = append(where, "h.book_id = ?")
-		args = append(args, q.BookID)
-	}
-	if q.Favorites {
-		where = append(where, "h.favorite = 1")
-	}
-	if len(where) == 0 {
-		where = append(where, "1")
-	}
+	from, where, args, ranked := clauses(q)
 
 	var sql string
-	if match != "" {
+	if ranked {
 		sql = fmt.Sprintf(`SELECT %s,
 				bm25(highlights_fts, %s),
 				snippet(highlights_fts, 0, '%s', '%s', '…', 48),
 				snippet(highlights_fts, 1, '%s', '%s', '…', 24)
-			FROM highlights_fts
-			JOIN highlights h ON h.id = highlights_fts.rowid
-			JOIN books b ON b.id = h.book_id
-			WHERE %s
+			%s WHERE %s
 			ORDER BY bm25(highlights_fts, %s), h.id
-			LIMIT ?`,
+			LIMIT ? OFFSET ?`,
 			store.EntryColumns, bm25Weights, markOpen, markClose, markOpen, markClose,
-			strings.Join(where, " AND "), bm25Weights)
+			from, where, bm25Weights)
 	} else {
 		sql = fmt.Sprintf(`SELECT %s, 0, '', ''
-			FROM highlights h JOIN books b ON b.id = h.book_id
-			WHERE %s
+			%s WHERE %s
 			ORDER BY h.highlighted_at IS NULL, h.highlighted_at DESC, h.id DESC
-			LIMIT ?`,
-			store.EntryColumns, strings.Join(where, " AND "))
+			LIMIT ? OFFSET ?`,
+			store.EntryColumns, from, where)
 	}
-	args = append(args, limit)
+	args = append(args, limit, max(q.Offset, 0))
 
 	rows, err := s.DB().Query(sql, args...)
 	if err != nil {
@@ -138,6 +114,42 @@ func Keyword(s *store.Store, q Query) ([]Result, error) {
 // quoted, so FTS syntax (AND, NEAR, -, :, *) is matched literally rather
 // than interpreted; double-quoted runs become phrases. Words are ANDed,
 // and the last one matches as a prefix so results update while typing.
+// Count returns how many highlights match q, ignoring Limit and Offset.
+func Count(s *store.Store, q Query) (int, error) {
+	from, where, args, _ := clauses(q)
+	var n int
+	if err := s.DB().QueryRow(`SELECT count(*) `+from+` WHERE `+where, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count search results: %w", err)
+	}
+	return n, nil
+}
+
+// clauses builds the FROM and WHERE shared by Keyword and Count. ranked is
+// true when there is text to match, so results order by bm25.
+func clauses(q Query) (from, where string, args []any, ranked bool) {
+	var conds []string
+	from = "FROM highlights h JOIN books b ON b.id = h.book_id"
+	if match := ftsQuery(q.Text); match != "" {
+		ranked = true
+		from = `FROM highlights_fts
+			JOIN highlights h ON h.id = highlights_fts.rowid
+			JOIN books b ON b.id = h.book_id`
+		conds = append(conds, "highlights_fts MATCH ?")
+		args = append(args, match)
+	}
+	if q.BookID != 0 {
+		conds = append(conds, "h.book_id = ?")
+		args = append(args, q.BookID)
+	}
+	if q.Favorites {
+		conds = append(conds, "h.favorite = 1")
+	}
+	if len(conds) == 0 {
+		conds = append(conds, "1")
+	}
+	return from, strings.Join(conds, " AND "), args, ranked
+}
+
 func ftsQuery(text string) string {
 	var (
 		terms   []string

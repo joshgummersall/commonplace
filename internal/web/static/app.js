@@ -19,6 +19,14 @@
 
   function select(i, { scroll = "nearest" } = {}) {
     const list = items();
+    // Moving past the last loaded result loads the next page, then moves.
+    const more = document.querySelector("[data-load-more]");
+    if (i >= list.length && more) {
+      if (!more.classList.contains("htmx-request")) more.click();
+      message("Loading more…");
+      document.addEventListener("htmx:afterSettle", () => select(i, { scroll }), { once: true });
+      return;
+    }
     if (list.length === 0) return;
     current = Math.max(0, Math.min(i, list.length - 1));
     paint();

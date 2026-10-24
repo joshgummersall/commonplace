@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/joshgummersall/commonplace/internal/daily"
@@ -100,8 +101,10 @@ type searchPage struct {
 	Results []card
 	// Searched is false on a bare /search with no query or filters.
 	Searched bool
-	// Truncated is true when the result limit cut the list short.
-	Truncated bool
+	// Total counts every match; set on the first page only.
+	Total int
+	// Next is the URL of the next page of results, or "" on the last.
+	Next string
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
@@ -113,36 +116,29 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		}
 		q.BookID = id
 	}
+	// Later pages are only fetched by the Load more button; a full page
+	// load always starts from the top.
+	if o := r.FormValue("offset"); o != "" && isHTMX(r) {
+		n, err := strconv.Atoi(o)
+		if err != nil || n < 0 {
+			return badRequest("bad offset %q", o)
+		}
+		q.Offset = n
+	}
 	data := searchPage{
 		page:     page{Title: "Search", Nav: "search"},
 		Query:    q,
 		Searched: q.Text != "" || q.BookID != 0 || q.Favorites,
 	}
 	if data.Searched {
-		q.Limit = search.DefaultLimit
-		if q.Text == "" {
-			q.Limit = search.ListLimit
-		}
-		results, err := search.Keyword(s.store, q)
-		if err != nil {
+		if err := s.searchResults(q, &data); err != nil {
 			return err
 		}
-		entries := make([]store.Entry, len(results))
-		for i, res := range results {
-			entries[i] = res.Entry
-		}
-		cards, err := s.cards(entries)
-		if err != nil {
-			return err
-		}
-		for i, res := range results {
-			cards[i].Snippet = res.Snippet
-			cards[i].NoteSnippet = res.NoteSnippet
-		}
-		data.Results = cards
-		data.Truncated = len(cards) >= q.Limit
 	}
-	if isHTMX(r) {
+	switch {
+	case isHTMX(r) && q.Offset > 0:
+		return s.render(w, "results-page", data)
+	case isHTMX(r):
 		return s.render(w, "results", data)
 	}
 	var err error
@@ -150,6 +146,50 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	return s.render(w, "search.html", data)
+}
+
+// searchResults fills in one page of results, the link to the next page,
+// and (on the first page) the total.
+func (s *Server) searchResults(q search.Query, data *searchPage) error {
+	// Ask for one extra row to learn whether another page exists.
+	q.Limit = search.PageSize + 1
+	results, err := search.Keyword(s.store, q)
+	if err != nil {
+		return err
+	}
+	if len(results) > search.PageSize {
+		results = results[:search.PageSize]
+		next := url.Values{"offset": {strconv.Itoa(q.Offset + search.PageSize)}}
+		if q.Text != "" {
+			next.Set("q", q.Text)
+		}
+		if q.BookID != 0 {
+			next.Set("book", strconv.FormatInt(q.BookID, 10))
+		}
+		if q.Favorites {
+			next.Set("fav", "1")
+		}
+		data.Next = "/search?" + next.Encode()
+	}
+	if q.Offset == 0 {
+		if data.Total, err = search.Count(s.store, q); err != nil {
+			return err
+		}
+	}
+	entries := make([]store.Entry, len(results))
+	for i, res := range results {
+		entries[i] = res.Entry
+	}
+	cards, err := s.cards(entries)
+	if err != nil {
+		return err
+	}
+	for i, res := range results {
+		cards[i].Snippet = res.Snippet
+		cards[i].NoteSnippet = res.NoteSnippet
+	}
+	data.Results = cards
+	return nil
 }
 
 type highlightPage struct {

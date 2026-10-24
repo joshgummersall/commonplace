@@ -2,12 +2,14 @@ package web
 
 import (
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -339,4 +341,66 @@ func TestSearchFavorites(t *testing.T) {
 	mustNotContain(t, frag, "We are the dead.")
 	// Without the filter, words match everything.
 	mustContain(t, h.get("/search?q=the"), "3 results")
+}
+
+func TestSearchLoadMore(t *testing.T) {
+	var clips []clippings.Clipping
+	for i := range 120 {
+		clips = append(clips, clip("Siddhartha", "Hesse", 10*(i+1), fmt.Sprintf("Passage %03d about the river.", i)))
+	}
+	h := newHarness(t, clips...)
+
+	first := h.get("/search?q=river")
+	mustContain(t, first, "120 results", "data-load-more", `hx-trigger="revealed, click"`)
+	if n := strings.Count(first, `data-item="quote"`); n != 50 {
+		t.Errorf("first page has %d quotes, want 50", n)
+	}
+	next := regexp.MustCompile(`hx-get="(/search\?[^"]+)"`).FindStringSubmatch(first)
+	if next == nil {
+		t.Fatal("no Load more URL")
+	}
+	nextURL := html.UnescapeString(next[1])
+	if !strings.Contains(nextURL, "offset=50") || !strings.Contains(nextURL, "q=river") {
+		t.Errorf("next URL = %s", nextURL)
+	}
+
+	_, second := h.do("GET", nextURL, nil, true)
+	mustNotContain(t, second, "<!doctype html>", `class="count"`)
+	if n := strings.Count(second, `data-item="quote"`); n != 50 {
+		t.Errorf("second page has %d quotes, want 50", n)
+	}
+	mustContain(t, second, "offset=100")
+
+	_, last := h.do("GET", strings.Replace(nextURL, "offset=50", "offset=100", 1), nil, true)
+	if n := strings.Count(last, `data-item="quote"`); n != 20 {
+		t.Errorf("last page has %d quotes, want 20", n)
+	}
+	mustNotContain(t, last, "data-load-more")
+
+	// Pages never repeat a quote.
+	ids := regexp.MustCompile(`id="h-(\d+)"`)
+	seen := map[string]bool{}
+	for _, body := range []string{first, second, last} {
+		for _, m := range ids.FindAllStringSubmatch(body, -1) {
+			if seen[m[1]] {
+				t.Errorf("quote %s on two pages", m[1])
+			}
+			seen[m[1]] = true
+		}
+	}
+	if len(seen) != 120 {
+		t.Errorf("saw %d distinct quotes, want 120", len(seen))
+	}
+
+	// A full page load ignores offset and starts from the top.
+	reload := h.get("/search?q=river&offset=50")
+	mustContain(t, reload, "120 results")
+	if a, b := ids.FindStringSubmatch(first), ids.FindStringSubmatch(reload); a[1] != b[1] {
+		t.Errorf("reload with offset starts at quote %s, want %s", b[1], a[1])
+	}
+	if status, _ := h.do("GET", "/search?q=river&offset=-1", nil, true); status != http.StatusBadRequest {
+		t.Errorf("negative offset = %d, want 400", status)
+	}
+	// Few results: no button at all.
+	mustNotContain(t, h.get("/search?q=%22passage+007%22"), "data-load-more")
 }

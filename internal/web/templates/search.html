@@ -18,14 +18,24 @@
 {{define "results"}}
 {{if .Searched}}
   {{if .Results}}
-  <p class="count">{{len .Results}} {{plural (len .Results) "result" "results"}}{{if .Truncated}}{{if .Query.Text}}; showing the best matches only{{else}}; showing the newest only{{end}}{{end}}</p>
+  <p class="count">{{.Total}} {{plural .Total "result" "results"}}</p>
   <div class="cards">
-    {{range .Results}}{{template "card" .}}{{end}}
+    {{template "results-page" .}}
   </div>
   {{else}}
   <p class="empty">{{if and .Query.Favorites (not .Query.Text)}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights match.{{end}}</p>
   {{end}}
 {{else}}
 <p class="empty">Search your highlights, notes, titles, and authors. Put a phrase in "quotes". Check Favorites to list them all.</p>
+{{end}}
+{{end}}
+
+{{/* One page of results. The Load more button fetches the next page when
+     it scrolls into view or is clicked, and is replaced by it. */}}
+{{define "results-page"}}
+{{range .Results}}{{template "card" .}}{{end}}
+{{with .Next}}
+<button type="button" class="load-more" data-load-more
+  hx-get="{{.}}" hx-trigger="revealed, click" hx-swap="outerHTML">Load more</button>
 {{end}}
 {{end}}
