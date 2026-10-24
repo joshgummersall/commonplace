@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/joshgummersall/commonplace/internal/clippings"
+	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/importer"
+	"github.com/joshgummersall/commonplace/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +25,11 @@ Re-importing a file is safe: highlights already stored are skipped, and an
 edited highlight (extended, trimmed, or shifted) replaces its older version,
 keeping its notes and favorite. Bookmarks are skipped.
 
-Entries that can't be parsed are reported as warnings and skipped.`,
+Entries that can't be parsed are reported as warnings and skipped.
+
+New and changed highlights are then embedded for semantic search. If
+Ollama isn't running, the import still succeeds; cmpl serve embeds them
+later.`,
 		Example: `  cmpl import "/Volumes/Kindle/documents/My Clippings.txt"
   cmpl import clippings.txt --source crosspoint`,
 		Args: cobra.ExactArgs(1),
@@ -58,6 +65,7 @@ Entries that can't be parsed are reported as warnings and skipped.`,
 				return err
 			}
 			a.printImportResult(r, len(warnings))
+			a.embedAfterImport(cmd.Context(), s)
 			return nil
 		},
 	}
@@ -78,5 +86,24 @@ func (a *App) printImportResult(r importer.Result, warnings int) {
 	}
 	if warnings > 0 {
 		fmt.Fprintf(a.stdout, "%d entries skipped with warnings (see above)\n", warnings)
+	}
+}
+
+// embedAfterImport embeds whatever is missing. Failing to embed never
+// fails the import: the highlights are stored, and serve retries.
+func (a *App) embedAfterImport(ctx context.Context, s *store.Store) {
+	e := a.embedder()
+	progress := func(done, total int) {
+		fmt.Fprintf(a.stderr, "\rEmbedding highlights: %d/%d", done, total)
+	}
+	n, err := embedding.Backfill(ctx, s, e, progress)
+	if n > 0 {
+		fmt.Fprintln(a.stderr)
+		fmt.Fprintf(a.stdout, "%d highlights embedded with %s\n", n, e.Model())
+	}
+	if err != nil {
+		left, _ := s.CountStaleEmbeddings(e.Model())
+		fmt.Fprintf(a.stderr, "warning: %d highlights not embedded: %v\n", left, err)
+		fmt.Fprintln(a.stderr, "Keyword search works now; cmpl serve embeds them once the embedder is reachable.")
 	}
 }

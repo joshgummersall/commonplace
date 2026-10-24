@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -32,8 +33,12 @@ type App struct {
 	getenv func(string) string
 	home   func() (string, error)
 
-	dbFlag string
-	store  *store.Store
+	dbFlag    string
+	ollamaURL string
+	model     string
+	store     *store.Store
+	// newEmbedder is replaced in tests.
+	newEmbedder func() embedding.Embedder
 }
 
 func NewApp(stdin io.Reader, stdout, stderr io.Writer) *App {
@@ -44,6 +49,19 @@ func NewApp(stdin io.Reader, stdout, stderr io.Writer) *App {
 		getenv: os.Getenv,
 		home:   os.UserHomeDir,
 	}
+}
+
+// embedder returns the configured embedder: --ollama-url, else
+// $OLLAMA_HOST, else Ollama's default address.
+func (a *App) embedder() embedding.Embedder {
+	if a.newEmbedder != nil {
+		return a.newEmbedder()
+	}
+	url := a.ollamaURL
+	if url == "" {
+		url = a.getenv("OLLAMA_HOST")
+	}
+	return embedding.NewOllama(url, a.model)
 }
 
 func Run(args []string, stdout io.Writer) error {
@@ -70,10 +88,15 @@ func (a *App) newRootCommand() *cobra.Command {
 		Long: `cmpl keeps e-reader highlights in a local SQLite database, searches them by
 keyword and meaning, and serves a daily shuffle of past highlights.
 
+Semantic search uses embeddings from a local Ollama model. Without Ollama,
+everything else works and search falls back to keywords.
+
 The database lives at ~/.commonplace/commonplace.db unless overridden by
 $` + dbEnvVar + ` or --db.`,
 	}
 	root.PersistentFlags().StringVar(&a.dbFlag, "db", "", "database path (default $"+dbEnvVar+" or ~/.commonplace/commonplace.db)")
+	root.PersistentFlags().StringVar(&a.ollamaURL, "ollama-url", "", "Ollama address for embeddings (default $OLLAMA_HOST or "+embedding.DefaultOllamaURL+")")
+	root.PersistentFlags().StringVar(&a.model, "embed-model", embedding.DefaultModel, "Ollama embedding model; changing it re-embeds every highlight")
 	root.CompletionOptions.DisableDefaultCmd = true
 
 	root.AddCommand(

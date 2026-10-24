@@ -2,16 +2,55 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/joshgummersall/commonplace/internal/embedding"
 )
 
+// unavailable is an embedder whose service is down.
+type unavailable struct{}
+
+func (unavailable) Model() string { return "test/unavailable" }
+func (unavailable) EmbedDocuments(context.Context, []string) ([][]float32, error) {
+	return nil, fmt.Errorf("%w: test", embedding.ErrUnavailable)
+}
+func (unavailable) EmbedQuery(context.Context, string) ([]float32, error) {
+	return nil, fmt.Errorf("%w: test", embedding.ErrUnavailable)
+}
+
+// unitEmbedder returns the same unit vector for every text.
+type unitEmbedder struct{}
+
+func (unitEmbedder) Model() string { return "test/unit" }
+func (unitEmbedder) EmbedDocuments(_ context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i := range out {
+		out[i] = []float32{1, 0}
+	}
+	return out, nil
+}
+func (u unitEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	vs, err := u.EmbedDocuments(ctx, []string{text})
+	return vs[0], err
+}
+
+// runCLI runs cmpl with an embedder that is down, so tests never reach a
+// real Ollama.
 func runCLI(t *testing.T, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	return runCLIWith(t, unavailable{}, args...)
+}
+
+func runCLIWith(t *testing.T, e embedding.Embedder, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	a := NewApp(nil, &out, &errOut)
 	a.getenv = func(string) string { return "" }
+	a.newEmbedder = func() embedding.Embedder { return e }
 	err = a.run(args)
 	return out.String(), errOut.String(), err
 }
@@ -61,5 +100,32 @@ func TestImportCommandErrors(t *testing.T) {
 				t.Errorf("err = %v, want it to mention %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestImportEmbeds(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "c.db")
+	fixture := filepath.Join("..", "..", "testdata", "kindle", "clippings.txt")
+
+	// Embedder down: the import succeeds and says what was left undone.
+	out, errOut, err := runCLI(t, "--db", db, "import", fixture)
+	if err != nil {
+		t.Fatalf("import failed with the embedder down: %v", err)
+	}
+	if !strings.Contains(out, "10 added") || !strings.Contains(errOut, "10 highlights not embedded") {
+		t.Errorf("stdout:\n%s\nstderr:\n%s", out, errOut)
+	}
+
+	// Embedder up: a re-import embeds what the first one could not.
+	out, _, err = runCLIWith(t, unitEmbedder{}, "--db", db, "import", fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "10 highlights embedded with test/unit") {
+		t.Errorf("stdout:\n%s", out)
+	}
+	out, errOut, _ = runCLIWith(t, unitEmbedder{}, "--db", db, "import", fixture)
+	if strings.Contains(out, "embedded") || errOut != "" {
+		t.Errorf("third import should have nothing to embed:\n%s%s", out, errOut)
 	}
 }

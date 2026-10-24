@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/web"
 	"github.com/spf13/cobra"
 )
@@ -27,6 +28,10 @@ func (a *App) newServeCommand() *cobra.Command {
 		Use:   "serve",
 		Short: "Serve the web app",
 		Long: `Serve the Commonplace web app: the daily shuffle, search, and notes.
+
+Highlights missing embeddings (new imports, or all of them after
+--embed-model changes) are embedded in the background, retrying every
+minute while Ollama is unreachable.
 
 It listens on localhost by default. The app has no login, so only use
 --host 0.0.0.0 (for example, to read on your phone) on a network you trust.`,
@@ -57,6 +62,7 @@ It listens on localhost by default. The app has no login, so only use
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+			go embedding.KeepFresh(ctx, s, a.embedder(), time.Minute, logger)
 			errc := make(chan error, 1)
 			go func() { errc <- httpSrv.Serve(ln) }()
 			select {

@@ -158,3 +158,19 @@ func TestMergeIntoMovesNotes(t *testing.T) {
 		t.Errorf("%d notes left on dropped highlight (err %v)", n, err)
 	}
 }
+
+func TestVectorRoundTrip(t *testing.T) {
+	in := []float32{0, 1, -1.5, 3.25e-8, 1e30}
+	out, err := DecodeVector(EncodeVector(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range in {
+		if in[i] != out[i] {
+			t.Errorf("element %d: %v != %v", i, out[i], in[i])
+		}
+	}
+	if _, err := DecodeVector([]byte{1, 2, 3}); err == nil {
+		t.Error("decoded a blob of 3 bytes")
+	}
+}
