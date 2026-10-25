@@ -1,0 +1,14 @@
+{
+  "name": "commonplace",
+  "owner": {
+    "name": "Joshua Gummersall"
+  },
+  "description": "Claude Code skills for a commonplace highlight library.",
+  "plugins": [
+    {
+      "name": "commonplace",
+      "source": "./plugin",
+      "description": "Skills that read a commonplace highlight library through the cmpl CLI."
+    }
+  ]
+}

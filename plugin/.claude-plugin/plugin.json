@@ -1,0 +1,8 @@
+{
+  "name": "commonplace",
+  "description": "Skills that read a commonplace highlight library through the cmpl CLI.",
+  "author": {
+    "name": "Joshua Gummersall"
+  },
+  "homepage": "https://github.com/joshgummersall/commonplace"
+}

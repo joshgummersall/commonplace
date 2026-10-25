@@ -91,6 +91,27 @@ cmpl themes                        # theme ids for --theme
 These commands don't change highlights, notes, favorites, or burials, and
 `cmpl daily` doesn't count as reading the day's set.
 
+### With Claude Code
+
+This repository is also a [Claude Code](https://claude.com/claude-code)
+plugin marketplace. Install its plugin from inside Claude Code:
+
+```
+/plugin marketplace add joshgummersall/commonplace
+/plugin install commonplace@commonplace
+```
+
+The plugin's skills read your library through `cmpl`, so `cmpl` must be on
+your `PATH`. The random topic pick also needs `jq`.
+
+- **`/commonplace:think [topic]`** tests your thinking on a topic against
+  your highlights and notes. It maps the claims and tensions in what you
+  highlighted, then questions you one point at a time, pressing on vague
+  or inconsistent answers, until you hold a position specific enough to be
+  wrong. It recommends reading aimed at the weak points and writes a
+  position note where your instructions say you keep notes. With no topic,
+  it picks a random theme.
+
 ### Keys
 
 The web app is built for the keyboard, with vim-style keys. Press `?` in the
