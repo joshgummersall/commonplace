@@ -219,28 +219,6 @@ func (s *Store) ThemeTree() ([]ThemeSummary, error) {
 	return nest(all), nil
 }
 
-// ThemeOutline is ThemeTree with only ids and names filled in, for menus.
-func (s *Store) ThemeOutline() ([]ThemeSummary, error) {
-	rows, err := s.db.Query(`SELECT id, coalesce(parent_id, 0), name FROM themes
-		ORDER BY parent_id IS NOT NULL, position`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var all []ThemeSummary
-	for rows.Next() {
-		var t ThemeSummary
-		if err := rows.Scan(&t.ID, &t.ParentID, &t.Name); err != nil {
-			return nil, err
-		}
-		all = append(all, t)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return nest(all), nil
-}
-
 // nest puts themes under their areas. all must list areas first.
 func nest(all []ThemeSummary) []ThemeSummary {
 	var areas []ThemeSummary

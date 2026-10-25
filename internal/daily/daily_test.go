@@ -63,7 +63,7 @@ func TestTodayIsStableWithinADay(t *testing.T) {
 	}
 	// Viewing marks them seen, which changes every weight; the day's set
 	// must not change.
-	if err := MarkSeen(s, ids(first), morning); err != nil {
+	if err := s.MarkSeen(ids(first), morning); err != nil {
 		t.Fatal(err)
 	}
 	evening := morning.Add(12 * time.Hour)

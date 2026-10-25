@@ -83,7 +83,7 @@ func (s *Server) daily(w http.ResponseWriter, r *http.Request) error {
 	for i, e := range entries {
 		ids[i] = e.ID
 	}
-	return daily.MarkSeen(s.store, ids, now)
+	return s.store.MarkSeen(ids, now)
 }
 
 type searchPage struct {
@@ -159,7 +159,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	if data.Books, err = s.store.Books(); err != nil {
 		return err
 	}
-	if data.Areas, err = s.store.ThemeOutline(); err != nil {
+	if data.Areas, err = s.store.ThemeTree(); err != nil {
 		return err
 	}
 	return s.render(w, "search.html", data)

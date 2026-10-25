@@ -195,7 +195,7 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 
 // resolveTheme turns --theme into a theme or area id (see resolve).
 func resolveTheme(s *store.Store, arg string) (int64, error) {
-	areas, err := s.ThemeOutline()
+	areas, err := s.ThemeTree()
 	if err != nil {
 		return 0, err
 	}
