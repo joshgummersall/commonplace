@@ -1,20 +1,14 @@
 package themes
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/joshgummersall/commonplace/internal/embedding"
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -31,34 +25,23 @@ type Namer interface {
 const DefaultNameModel = "qwen2.5:14b"
 
 // ErrUnavailable means the naming model could not be reached.
-var ErrUnavailable = errors.New("naming model unavailable")
+var ErrUnavailable = ollama.ErrUnavailable
 
 // noTheme is what the model answers when a group shares no idea.
 const noTheme = "no clear theme"
 
 // OllamaNamer names groups with a model served by Ollama's /api/generate.
 type OllamaNamer struct {
-	BaseURL   string
+	ollama.Client
 	ModelName string // model name, e.g. "qwen2.5:14b"
-	Client    *http.Client
 }
 
 // NewOllamaNamer returns an OllamaNamer with defaults filled in.
 func NewOllamaNamer(baseURL, model string) *OllamaNamer {
-	if baseURL == "" {
-		baseURL = embedding.DefaultOllamaURL
-	}
 	if model == "" {
 		model = DefaultNameModel
 	}
-	if !strings.Contains(baseURL, "://") {
-		baseURL = "http://" + baseURL
-	}
-	return &OllamaNamer{
-		BaseURL:   strings.TrimRight(baseURL, "/"),
-		ModelName: model,
-		Client:    &http.Client{Timeout: 5 * time.Minute},
-	}
+	return &OllamaNamer{Client: ollama.New(baseURL, 5*time.Minute), ModelName: model}
 }
 
 func (o *OllamaNamer) Model() string { return o.ModelName }
@@ -85,45 +68,17 @@ func (o *OllamaNamer) Name(ctx context.Context, passages []string, broad bool) (
 	for _, p := range passages {
 		fmt.Fprintf(&b, "- %s\n", truncate(strings.Join(strings.Fields(p), " "), passageChars))
 	}
-	body, err := json.Marshal(map[string]any{
+	req := map[string]any{
 		"model":   o.ModelName,
 		"prompt":  b.String(),
 		"stream":  false,
 		"options": map[string]any{"temperature": 0},
-	})
-	if err != nil {
-		return "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.BaseURL+"/api/generate", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := o.Client.Do(req)
-	if err != nil {
-		var opErr *net.OpError
-		if errors.As(err, &opErr) && opErr.Op == "dial" {
-			return "", fmt.Errorf("%w: Ollama is not reachable at %s", ErrUnavailable, o.BaseURL)
-		}
-		return "", fmt.Errorf("ollama generate: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return "", fmt.Errorf("ollama generate: read response: %w", err)
 	}
 	var out struct {
 		Response string `json:"response"`
-		Error    string `json:"error"`
 	}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", fmt.Errorf("ollama generate: HTTP %d: %.200s", resp.StatusCode, raw)
-	}
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusNotFound && strings.Contains(out.Error, "not found") {
-			return "", fmt.Errorf("%w: model %s is not pulled; run `ollama pull %s`", ErrUnavailable, o.ModelName, o.ModelName)
-		}
-		return "", fmt.Errorf("ollama generate: HTTP %d: %s", resp.StatusCode, out.Error)
+	if err := o.Post(ctx, "/api/generate", o.ModelName, req, &out); err != nil {
+		return "", err
 	}
 	return cleanName(out.Response), nil
 }
