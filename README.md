@@ -80,11 +80,12 @@ documents its flags and output.
 
 ```
 cmpl daily                         # today's daily highlights
-cmpl list --favorites              # newest first; --book, --limit, --offset
+cmpl list --favorites              # newest first; --book, --theme, --limit, --offset
 cmpl search 'fear of failure'      # words and meaning, as in the web app
 cmpl show 412                      # one highlight in full, with notes
 cmpl similar 412                   # highlights close in meaning
 cmpl books                         # book ids for --book
+cmpl themes                        # theme ids for --theme
 ```
 
 These commands don't change highlights, notes, favorites, or burials, and

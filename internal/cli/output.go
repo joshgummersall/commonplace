@@ -25,6 +25,8 @@ type highlightJSON struct {
 	Favorite      bool       `json:"favorite"`
 	Buried        bool       `json:"buried"`
 	NoteCount     int        `json:"note_count"`
+	// Theme is the most specific theme the highlight is in, if any.
+	Theme *themeRefJSON `json:"theme,omitempty"`
 	// Notes is set by show, and by the other read commands with --notes.
 	Notes []noteJSON `json:"notes,omitempty"`
 	// Why is set by search: where the query matched.
@@ -34,6 +36,11 @@ type highlightJSON struct {
 	NoteMatch string `json:"note_match,omitempty"`
 	// Score is set by similar: cosine similarity, higher is closer.
 	Score *float32 `json:"score,omitempty"`
+}
+
+type themeRefJSON struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 type noteJSON struct {
@@ -61,7 +68,9 @@ A highlight is an object:
    "location": "page 138, loc 2452-2456", "highlighted_at": "2022-03-07T01:58:16Z",
    "favorite": false, "buried": false, "note_count": 1}
 
-highlighted_at is null when the device didn't record a time.
+highlighted_at is null when the device didn't record a time. A highlight
+in a theme adds "theme": {"id": 31, "name": "..."}, its most specific
+theme (see cmpl themes).
 
 With --notes (always, for show), each highlight that has notes adds them:
 
@@ -115,6 +124,10 @@ func toJSON(s *store.Store, entries []store.Entry) ([]highlightJSON, error) {
 	if err != nil {
 		return nil, err
 	}
+	themes, err := s.ThemesOf(ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]highlightJSON, len(entries))
 	for i, e := range entries {
 		h := highlightJSON{
@@ -127,6 +140,9 @@ func toJSON(s *store.Store, entries []store.Entry) ([]highlightJSON, error) {
 			Favorite:  e.Favorite,
 			Buried:    e.Buried,
 			NoteCount: counts[e.ID],
+		}
+		if t, ok := themes[e.ID]; ok {
+			h.Theme = &themeRefJSON{t.ID, t.Name}
 		}
 		if !e.HighlightedAt.IsZero() {
 			t := e.HighlightedAt.UTC()

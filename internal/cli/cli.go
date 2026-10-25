@@ -110,6 +110,10 @@ The library:
              them.
   buried     A highlight hidden from the daily set. It still appears in
              list and search, marked "buried".
+  theme      A group of highlights that say related things, usually across
+             books, found and named in the web app. Broad areas hold
+             specific themes; cmpl themes lists them, and --theme filters
+             to one.
 
 Every read command prints JSON and takes ids from the others' output. A typical session:
 
@@ -118,6 +122,7 @@ Every read command prints JSON and takes ids from the others' output. A typical 
   cmpl show 412                   one highlight in full, with notes
   cmpl similar 412                highlights close in meaning to it
   cmpl books                      book ids, for --book
+  cmpl themes                     theme ids, for --theme
 
 Read commands never change highlights, notes, favorites, or burials. Run
 cmpl help <command> for each command's flags, output, and examples.
@@ -142,6 +147,7 @@ unless overridden by $` + dbEnvVar + ` or --db.`,
 		a.newShowCommand(),
 		a.newSimilarCommand(),
 		a.newBooksCommand(),
+		a.newThemesCommand(),
 	}
 	manage := []*cobra.Command{
 		a.newImportCommand(),
