@@ -141,3 +141,13 @@ func (s *Store) migrateTo(target int) error {
 	}
 	return nil
 }
+
+// Backup writes a consistent copy of the database to path, which must not
+// exist. The copy is a single compacted file with no -wal or -shm
+// companions, so it is safe to put in a synced folder.
+func (s *Store) Backup(path string) error {
+	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
+		return fmt.Errorf("back up db: %w", err)
+	}
+	return nil
+}

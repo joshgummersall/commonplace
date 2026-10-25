@@ -76,7 +76,7 @@ app for the full list.
 | --- | --- |
 | `j` `k` (with counts, `5j`), `gg` `G`, `Ctrl-d` `Ctrl-u` | Move between quotes or notes |
 | `o` `Enter` / `h` `Ctrl-o` | Open quote / back |
-| `/`, `gd` `gs` `gf` | Search, go to Daily / Search / Favorites |
+| `/` `gs`, `gd`, `gf` | Search, go to Daily, toggle the Favorites filter |
 | `f`, `b`, `s` | Favorite, bury, more like this |
 | `i`, `cc`, `dd` | Write, edit, delete a note |
 | `yy`, `u` | Copy quote with source, undo |
@@ -85,12 +85,30 @@ app for the full list.
 
 | Setting | Flag | Environment | Default |
 | --- | --- | --- | --- |
-| Database | `--db` | `COMMONPLACE_DB` | `~/.commonplace/commonplace.db` |
+| Database | `--db` | `COMMONPLACE_DB` | `$XDG_DATA_HOME/commonplace/commonplace.db`, else `~/.local/share/commonplace/commonplace.db` |
 | Ollama address | `--ollama-url` | `OLLAMA_HOST` | `http://localhost:11434` |
 | Embedding model | `--embed-model` | | `qwen3-embedding:0.6b` |
 
 Changing the embedding model re-embeds every highlight in the background the
 next time `cmpl serve` runs.
+
+Versions before 0.4.0 kept the database in `~/.commonplace`. cmpl still uses
+it there, with a note, until you stop cmpl and move `commonplace.db` (and any
+`-wal` and `-shm` files) to the new default.
+
+## Backups
+
+```
+cmpl backup ~/Library/Mobile\ Documents/com~apple~CloudDocs/commonplace --keep 30
+```
+
+writes a snapshot named by the time (`commonplace-20261025T153000Z.db`) and,
+with `--keep`, removes all but the newest snapshots in that folder. It is safe
+while `cmpl serve` runs. A snapshot is one file, so it is safe in iCloud Drive
+or another synced folder; the live database is not, because SQLite keeps it in
+several files that must change together. Run it on a schedule (cron, launchd)
+for regular backups. To restore, stop cmpl and copy a snapshot to the database
+path.
 
 ## Measuring search
 

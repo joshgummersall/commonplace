@@ -91,16 +91,18 @@ keyword and meaning, and serves a daily shuffle of past highlights.
 Semantic search uses embeddings from a local Ollama model. Without Ollama,
 everything else works and search falls back to keywords.
 
-The database lives at ~/.commonplace/commonplace.db unless overridden by
-$` + dbEnvVar + ` or --db.`,
+The database lives at $XDG_DATA_HOME/commonplace/commonplace.db
+(~/.local/share/commonplace/commonplace.db when $XDG_DATA_HOME is unset)
+unless overridden by $` + dbEnvVar + ` or --db.`,
 	}
-	root.PersistentFlags().StringVar(&a.dbFlag, "db", "", "database path (default $"+dbEnvVar+" or ~/.commonplace/commonplace.db)")
+	root.PersistentFlags().StringVar(&a.dbFlag, "db", "", "database path (default $"+dbEnvVar+" or ~/.local/share/commonplace/commonplace.db)")
 	root.PersistentFlags().StringVar(&a.ollamaURL, "ollama-url", "", "Ollama address for embeddings (default $OLLAMA_HOST or "+embedding.DefaultOllamaURL+")")
 	root.PersistentFlags().StringVar(&a.model, "embed-model", embedding.DefaultModel, "Ollama embedding model; changing it re-embeds every highlight")
 	root.CompletionOptions.DisableDefaultCmd = true
 
 	root.AddCommand(
 		a.newImportCommand(),
+		a.newBackupCommand(),
 		a.newEvalCommand(),
 		a.newServeCommand(),
 		a.newVersionCommand(),
@@ -120,8 +122,10 @@ func (a *App) newVersionCommand() *cobra.Command {
 	}
 }
 
-// dbPath resolves the database path: --db, then $COMMONPLACE_DB, then the
-// default under the home directory.
+// dbPath resolves the database path: --db, then $COMMONPLACE_DB, then
+// commonplace/commonplace.db under the XDG data dir ($XDG_DATA_HOME, else
+// ~/.local/share). Until the new default exists, a database at the old
+// default, ~/.commonplace, is used instead.
 func (a *App) dbPath() (string, error) {
 	if a.dbFlag != "" {
 		return a.dbFlag, nil
@@ -133,7 +137,33 @@ func (a *App) dbPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find home dir: %w", err)
 	}
-	return filepath.Join(home, ".commonplace", "commonplace.db"), nil
+	path := a.defaultDBPath(home)
+	if exists(path) {
+		return path, nil
+	}
+	if legacy := legacyDBPath(home); exists(legacy) {
+		return legacy, nil
+	}
+	return path, nil
+}
+
+func (a *App) defaultDBPath(home string) string {
+	data := a.getenv("XDG_DATA_HOME")
+	// The XDG spec says to ignore a relative path.
+	if !filepath.IsAbs(data) {
+		data = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(data, "commonplace", "commonplace.db")
+}
+
+// legacyDBPath is the default before cmpl followed the XDG spec.
+func legacyDBPath(home string) string {
+	return filepath.Join(home, ".commonplace", "commonplace.db")
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // openStore opens the database on first use so commands that never touch it
@@ -145,6 +175,11 @@ func (a *App) openStore() (*store.Store, error) {
 	path, err := a.dbPath()
 	if err != nil {
 		return nil, err
+	}
+	if home, err := a.home(); err == nil && path == legacyDBPath(home) {
+		fmt.Fprintf(a.stderr, "note: using the database at its old location, %s. "+
+			"To use the new default, stop cmpl and move commonplace.db and any "+
+			"-wal and -shm files to %s\n", filepath.Dir(path), filepath.Dir(a.defaultDBPath(home)))
 	}
 	s, err := store.Open(path)
 	if err != nil {
