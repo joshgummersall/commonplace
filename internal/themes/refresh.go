@@ -74,8 +74,20 @@ type Result struct {
 type group struct {
 	theme  store.Theme // Members set; ID and Name once matched or named
 	themes []*group    // an area's themes
-	broad  bool
-	spread bool // passes the size and spread rules itself
+	spread bool        // passes the size and spread rules itself
+}
+
+// kept reports whether an area is worth showing: it passes the size and
+// spread rules itself, or holds a theme that does.
+func (g *group) kept() bool { return g.spread || len(g.themes) > 0 }
+
+// prune drops the themes the model declined, then the areas no longer
+// worth showing.
+func prune(areas []*group) []*group {
+	for _, a := range areas {
+		a.themes = slices.DeleteFunc(a.themes, func(t *group) bool { return t.theme.Name == "" })
+	}
+	return slices.DeleteFunc(areas, func(a *group) bool { return !a.kept() })
 }
 
 // Refresh regroups every highlight embedded by model, names new groups
@@ -89,20 +101,9 @@ func Refresh(ctx context.Context, s *store.Store, model string, namer Namer, now
 		}
 	}
 	report(Progress{Stage: StageReading})
-	inputs, err := s.ThemeInputs(model)
+	inputs, res, err := load(s, model)
 	if err != nil {
-		return Result{}, err
-	}
-	var total int
-	if err := s.DB().QueryRow(`SELECT count(*) FROM highlights`).Scan(&total); err != nil {
-		return Result{}, err
-	}
-	res := Result{Highlights: len(inputs), Unembedded: total - len(inputs)}
-	switch {
-	case len(inputs) < MinHighlights:
-		return res, fmt.Errorf("themes need at least %d embedded highlights, and %d are embedded so far", MinHighlights, len(inputs))
-	case len(inputs) > MaxHighlights:
-		return res, fmt.Errorf("themes handle up to %d highlights for now, and you have %d", MaxHighlights, len(inputs))
+		return res, err
 	}
 
 	report(Progress{Stage: StageGrouping})
@@ -114,81 +115,166 @@ func Refresh(ctx context.Context, s *store.Store, model string, namer Namer, now
 	if err != nil {
 		return res, err
 	}
-	var areaList, themeList []*group
-	for _, a := range areas {
-		areaList = append(areaList, a)
-		themeList = append(themeList, a.themes...)
-	}
-	res.Kept = match(areaList, old, true) + match(themeList, old, false)
+	res.Kept = keepNames(areas, old)
 
-	// Name themes before areas: an area the model can't name borrows the
-	// name of its largest theme.
-	var unnamed []*group
-	for _, g := range append(themeList, areaList...) {
-		if g.theme.Name == "" {
-			unnamed = append(unnamed, g)
-		}
-	}
-	texts := make(map[int64]string, len(inputs))
+	n := naming{ctx: ctx, namer: namer, report: report, texts: make(map[int64]string, len(inputs))}
 	for _, in := range inputs {
-		texts[in.ID] = in.Text
+		n.texts[in.ID] = in.Text
 	}
-	for i, g := range unnamed {
-		report(Progress{Stage: StageNaming, Done: i, Total: len(unnamed)})
-		if g.broad {
-			g.themes = slices.DeleteFunc(g.themes, func(t *group) bool { return t.theme.Name == "" })
-			if !g.spread && len(g.themes) == 0 {
-				continue // kept only for themes the model declined
+	if areas, err = n.nameAll(areas); err != nil {
+		return res, err
+	}
+	res.Declined = n.declined
+
+	out := saved(areas)
+	res.Areas = len(out)
+	for _, a := range out {
+		res.Themes += len(a.Themes)
+	}
+	res.Lost = lost(out, old)
+	report(Progress{Stage: StageSaving})
+	if err := ctx.Err(); err != nil {
+		return res, err
+	}
+	return res, s.ReplaceThemes(out, store.ThemeRefresh{At: now, Highlights: len(inputs)})
+}
+
+// load reads the embedded highlights and checks there are enough, and not
+// too many, to group.
+func load(s *store.Store, model string) ([]store.ThemeInput, Result, error) {
+	inputs, err := s.ThemeInputs(model)
+	if err != nil {
+		return nil, Result{}, err
+	}
+	total, err := s.CountHighlights()
+	if err != nil {
+		return nil, Result{}, err
+	}
+	res := Result{Highlights: len(inputs), Unembedded: total - len(inputs)}
+	switch {
+	case len(inputs) < MinHighlights:
+		return nil, res, fmt.Errorf("themes need at least %d embedded highlights, and %d are embedded so far", MinHighlights, len(inputs))
+	case len(inputs) > MaxHighlights:
+		return nil, res, fmt.Errorf("themes handle up to %d highlights for now, and you have %d", MaxHighlights, len(inputs))
+	}
+	return inputs, res, nil
+}
+
+// keepNames gives areas and themes the ids and names of the old ones they
+// match, and returns how many matched.
+func keepNames(areas []*group, old []store.Theme) int {
+	var themes []*group
+	for _, a := range areas {
+		themes = append(themes, a.themes...)
+	}
+	return match(areas, old, true) + match(themes, old, false)
+}
+
+// naming names the groups a refresh found no old name for.
+type naming struct {
+	ctx         context.Context
+	namer       Namer
+	report      func(Progress)
+	texts       map[int64]string
+	done, total int
+	declined    int
+}
+
+// nameAll names themes before areas, since an area the model can't name
+// borrows the name of its largest theme, and an area left with no theme
+// may not need a name at all. It returns the areas still worth showing.
+func (n *naming) nameAll(areas []*group) ([]*group, error) {
+	var themes []*group
+	for _, a := range areas {
+		for _, t := range a.themes {
+			if t.theme.Name == "" {
+				themes = append(themes, t)
 			}
 		}
-		var passages []string
-		for _, id := range g.theme.Members[:min(namePassages, len(g.theme.Members))] {
-			passages = append(passages, texts[id])
-		}
-		name, err := namer.Name(ctx, passages, g.broad)
-		if err != nil {
-			return res, err
-		}
-		if name == "" && g.broad && len(g.themes) > 0 {
-			name = g.themes[0].theme.Name
-		}
-		if name == "" {
-			res.Declined++
-		}
-		g.theme.Name = name
 	}
+	// The total counts every unnamed area until the themes are named, then
+	// drops those pruned.
+	n.total = len(themes) + len(unnamed(areas))
+	for _, t := range themes {
+		if err := n.name(t, false); err != nil {
+			return nil, err
+		}
+	}
+	areas = prune(areas)
+	broad := unnamed(areas)
+	n.total = n.done + len(broad)
+	for _, a := range broad {
+		if err := n.name(a, true); err != nil {
+			return nil, err
+		}
+	}
+	return prune(areas), nil
+}
 
+func (n *naming) name(g *group, broad bool) error {
+	n.report(Progress{Stage: StageNaming, Done: n.done, Total: n.total})
+	n.done++
+	var passages []string
+	for _, id := range g.theme.Members[:min(namePassages, len(g.theme.Members))] {
+		passages = append(passages, n.texts[id])
+	}
+	name, err := n.namer.Name(n.ctx, passages, broad)
+	if err != nil {
+		return err
+	}
+	if name == "" && broad && len(g.themes) > 0 {
+		name = g.themes[0].theme.Name
+	}
+	if name == "" {
+		n.declined++
+	}
+	g.theme.Name = name
+	return nil
+}
+
+func unnamed(groups []*group) []*group {
+	var out []*group
+	for _, g := range groups {
+		if g.theme.Name == "" {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// saved converts the named areas and their themes to what the store
+// saves. An area the model declined is dropped.
+func saved(areas []*group) []store.Area {
 	var out []store.Area
 	for _, a := range areas {
-		a.themes = slices.DeleteFunc(a.themes, func(t *group) bool { return t.theme.Name == "" })
-		if a.theme.Name == "" || (!a.spread && len(a.themes) == 0) {
+		if a.theme.Name == "" {
 			continue
 		}
 		area := store.Area{Theme: a.theme}
 		for _, t := range a.themes {
 			area.Themes = append(area.Themes, t.theme)
 		}
-		res.Areas++
-		res.Themes += len(area.Themes)
 		out = append(out, area)
 	}
-	saved := map[int64]bool{}
+	return out
+}
+
+// lost lists the names you set on old themes that no saved group kept.
+func lost(out []store.Area, old []store.Theme) []string {
+	kept := map[int64]bool{}
 	for _, a := range out {
-		saved[a.ID] = true
+		kept[a.ID] = true
 		for _, t := range a.Themes {
-			saved[t.ID] = true
+			kept[t.ID] = true
 		}
 	}
+	var names []string
 	for _, o := range old {
-		if o.Renamed && !saved[o.ID] {
-			res.Lost = append(res.Lost, o.Name)
+		if o.Renamed && !kept[o.ID] {
+			names = append(names, o.Name)
 		}
 	}
-	report(Progress{Stage: StageSaving})
-	if err := ctx.Err(); err != nil {
-		return res, err
-	}
-	return res, s.ReplaceThemes(out, store.ThemeRefresh{At: now, Highlights: len(inputs)})
+	return names
 }
 
 // build clusters inputs into areas holding themes, largest first, keeping
@@ -217,25 +303,22 @@ func buildAt(inputs []store.ThemeInput, vecs [][]float32, merges []merge, themeC
 	for _, g := range cut(n, merges, themeCut) {
 		if spread(inputs, g) {
 			ai := areaOf[g[0]]
-			t := newGroup(inputs, vecs, g, false)
-			t.spread = true
+			t := &group{theme: store.Theme{Members: members(inputs, vecs, g)}, spread: true}
 			themesIn[ai] = append(themesIn[ai], t)
 		}
 	}
 	var out []*group
 	for ai, g := range areaGroups {
-		ok := spread(inputs, g)
-		if !ok && len(themesIn[ai]) == 0 {
-			continue
-		}
-		a := newGroup(inputs, vecs, g, true)
-		a.spread = ok
+		a := &group{spread: spread(inputs, g)}
 		a.themes = slices.DeleteFunc(themesIn[ai], func(t *group) bool {
 			return float64(len(t.theme.Members)) >= maxAreaShare*float64(len(g))
 		})
-		if !ok && len(a.themes) == 0 {
+		if !a.kept() {
 			continue
 		}
+		// Ordering members costs O(n²) in the group's size, so it waits
+		// until the area is known to be kept.
+		a.theme.Members = members(inputs, vecs, g)
 		slices.SortStableFunc(a.themes, bySize)
 		out = append(out, a)
 	}
@@ -245,12 +328,13 @@ func buildAt(inputs []store.ThemeInput, vecs [][]float32, merges []merge, themeC
 
 func bySize(a, b *group) int { return cmp.Compare(len(b.theme.Members), len(a.theme.Members)) }
 
-func newGroup(inputs []store.ThemeInput, vecs [][]float32, points []int, broad bool) *group {
-	g := &group{broad: broad}
+// members lists a group's highlight ids, most central first.
+func members(inputs []store.ThemeInput, vecs [][]float32, points []int) []int64 {
+	var ids []int64
 	for _, i := range central(vecs, points) {
-		g.theme.Members = append(g.theme.Members, inputs[i].ID)
+		ids = append(ids, inputs[i].ID)
 	}
-	return g
+	return ids
 }
 
 // spread reports whether a group is big enough and spans enough books.
