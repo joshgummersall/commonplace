@@ -57,12 +57,12 @@ func mustContainAll(t *testing.T, s string, wants ...string) {
 
 func TestDailyCommand(t *testing.T) {
 	db := readDB(t)
-	hs := decode[[]highlightJSON](t, mustRun(t, "--db", db, "daily", "--json"))
+	hs := decode[[]highlightJSON](t, mustRun(t, "--db", db, "daily"))
 	if len(hs) != 10 {
 		t.Fatalf("daily returned %d highlights, want all 10", len(hs))
 	}
 	// The set is fixed for the day.
-	again := decode[[]highlightJSON](t, mustRun(t, "--db", db, "daily", "--json"))
+	again := decode[[]highlightJSON](t, mustRun(t, "--db", db, "daily"))
 	for i := range hs {
 		if hs[i].ID != again[i].ID {
 			t.Fatalf("daily changed within the day: %d vs %d", hs[i].ID, again[i].ID)
@@ -79,14 +79,11 @@ func TestDailyCommand(t *testing.T) {
 	if seen != 0 {
 		t.Errorf("%d highlights marked seen by cmpl daily", seen)
 	}
-
-	text := mustRun(t, "--db", db, "daily")
-	mustContainAll(t, text, fmt.Sprintf("#%d · ", hs[0].ID), hs[0].Text)
 }
 
 func TestListCommand(t *testing.T) {
 	db := readDB(t)
-	p := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--limit", "4", "--json"))
+	p := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--limit", "4"))
 	if p.Total != 10 || len(p.Results) != 4 || p.NextOffset == nil || *p.NextOffset != 4 {
 		t.Fatalf("first page: total %d, %d results, next %v", p.Total, len(p.Results), p.NextOffset)
 	}
@@ -95,16 +92,13 @@ func TestListCommand(t *testing.T) {
 			t.Errorf("not newest first at %d", i)
 		}
 	}
-	last := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--limit", "4", "--offset", "8", "--json"))
+	last := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--limit", "4", "--offset", "8"))
 	if len(last.Results) != 2 || last.NextOffset != nil {
 		t.Errorf("last page: %d results, next %v", len(last.Results), last.NextOffset)
 	}
 
-	text := mustRun(t, "--db", db, "list", "--limit", "4")
-	mustContainAll(t, text, "Showing 1-4 of 10. Next page: --offset 4")
-
 	// --book takes part of a title or an id.
-	gtd := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--book", "getting things", "--json"))
+	gtd := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--book", "getting things"))
 	if gtd.Total == 0 {
 		t.Fatal("no highlights for --book 'getting things'")
 	}
@@ -113,7 +107,7 @@ func TestListCommand(t *testing.T) {
 			t.Errorf("--book returned %q", h.Title)
 		}
 	}
-	byID := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--book", fmt.Sprint(gtd.Results[0].BookID), "--json"))
+	byID := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--book", fmt.Sprint(gtd.Results[0].BookID)))
 	if byID.Total != gtd.Total {
 		t.Errorf("--book by id: %d, by title: %d", byID.Total, gtd.Total)
 	}
@@ -144,15 +138,14 @@ func TestListErrors(t *testing.T) {
 func TestSearchCommand(t *testing.T) {
 	db := readDB(t)
 	// The embedder is down in runCLI, so search matches words and says so.
-	p := decode[pageJSON](t, mustRun(t, "--db", db, "search", "courage", "--json"))
+	p := decode[pageJSON](t, mustRun(t, "--db", db, "search", "courage"))
 	if p.Total != 1 || p.Results[0].Why[0] != "words in the passage" || p.Fallback == "" {
 		t.Fatalf("search courage: %+v", p)
 	}
-	text := mustRun(t, "--db", db, "search", "courage")
-	mustContainAll(t, text, "Matched words only:", "Courage is mostly", "Matched: words in the passage", "Showing 1-1 of 1.")
-
-	none := mustRun(t, "--db", db, "search", "xylophone")
-	mustContainAll(t, none, "No highlights (0 total).")
+	none := decode[pageJSON](t, mustRun(t, "--db", db, "search", "xylophone"))
+	if none.Total != 0 || none.Results == nil || none.NextOffset != nil {
+		t.Errorf("search xylophone: %+v", none)
+	}
 }
 
 func TestShowCommand(t *testing.T) {
@@ -169,39 +162,34 @@ func TestShowCommand(t *testing.T) {
 	s.Close()
 
 	// Search shows the matching part of a note, and --notes whole notes.
-	p := decode[pageJSON](t, mustRun(t, "--db", db, "search", "plainly", "--json"))
+	p := decode[pageJSON](t, mustRun(t, "--db", db, "search", "plainly"))
 	if p.Total != 1 || p.Results[0].ID != id || p.Results[0].NoteMatch != "Say it plainly." || p.Results[0].Notes != nil {
 		t.Fatalf("search plainly: %+v", p)
 	}
-	mustContainAll(t, mustRun(t, "--db", db, "search", "plainly"), "Note match: Say it plainly.", "Matched: words in a note")
-	all := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--notes", "--json"))
+	all := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--notes"))
 	for _, h := range all.Results {
 		if want := map[bool]int{true: 1}[h.ID == id]; len(h.Notes) != want {
 			t.Errorf("list --notes: #%d has %d notes, want %d", h.ID, len(h.Notes), want)
 		}
 	}
-	listText := mustRun(t, "--db", db, "list", "--notes")
-	mustContainAll(t, listText, "): Say it plainly.")
-	if strings.Contains(listText, "1 note") {
-		t.Errorf("list --notes printed a count as well as the note:\n%s", listText)
-	}
-
-	hs := decode[[]highlightJSON](t, mustRun(t, "--db", db, "show", fmt.Sprint(id), "--json"))
+	hs := decode[[]highlightJSON](t, mustRun(t, "--db", db, "show", fmt.Sprint(id)))
 	if len(hs) != 1 || len(hs[0].Notes) != 1 || hs[0].Notes[0].Body != "Say it plainly." || hs[0].Notes[0].Source != "user" {
 		t.Fatalf("show: %+v", hs)
 	}
-	text := mustRun(t, "--db", db, "show", fmt.Sprintf("#%d", id))
-	mustContainAll(t, text, "Courage is mostly", "(user, ", "): Say it plainly.")
+	// Ids may carry the # that the web app shows.
+	if hs := decode[[]highlightJSON](t, mustRun(t, "--db", db, "show", fmt.Sprintf("#%d", id))); len(hs) != 1 || hs[0].ID != id {
+		t.Errorf("show #%d: %+v", id, hs)
+	}
 }
 
 func TestSimilarCommand(t *testing.T) {
 	db := readDB(t)
 	// Similar reads the vectors stored for the configured model.
-	first := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--limit", "1", "--json")).Results[0]
+	first := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--limit", "1")).Results[0]
 	out := decode[struct {
 		OtherBooks []highlightJSON `json:"other_books"`
 		SameBook   []highlightJSON `json:"same_book"`
-	}](t, mustRunWith(t, unitEmbedder{}, "--db", db, "similar", fmt.Sprint(first.ID), "--limit", "2", "--json"))
+	}](t, mustRunWith(t, unitEmbedder{}, "--db", db, "similar", fmt.Sprint(first.ID), "--limit", "2"))
 	if len(out.OtherBooks) != 2 || out.OtherBooks[0].Score == nil {
 		t.Fatalf("similar: %+v", out)
 	}
@@ -210,8 +198,6 @@ func TestSimilarCommand(t *testing.T) {
 			t.Errorf("other_books has %+v", h)
 		}
 	}
-	text := mustRunWith(t, unitEmbedder{}, "--db", db, "similar", fmt.Sprint(first.ID))
-	mustContainAll(t, text, "== Other books ==", "== Same book ==", "similarity 1.00")
 }
 
 func TestBooksCommand(t *testing.T) {
@@ -220,7 +206,7 @@ func TestBooksCommand(t *testing.T) {
 		ID         int64  `json:"id"`
 		Title      string `json:"title"`
 		Highlights int    `json:"highlights"`
-	}](t, mustRun(t, "--db", db, "books", "--json"))
+	}](t, mustRun(t, "--db", db, "books"))
 	total := 0
 	for _, b := range books {
 		total += b.Highlights
@@ -228,15 +214,14 @@ func TestBooksCommand(t *testing.T) {
 	if total != 10 {
 		t.Errorf("books count %d highlights, want 10", total)
 	}
-	mustContainAll(t, mustRun(t, "--db", db, "books"), "ID", "Getting Things Done · Allen, David")
 }
 
 func TestEmptyLibrary(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "c.db")
-	mustContainAll(t, mustRun(t, "--db", db, "daily"), "No highlights yet")
-	mustContainAll(t, mustRun(t, "--db", db, "books"), "No books yet")
-	if out := mustRun(t, "--db", db, "daily", "--json"); strings.TrimSpace(out) != "[]" {
-		t.Errorf("empty daily --json = %q", out)
+	for _, c := range []string{"daily", "books"} {
+		if out := mustRun(t, "--db", db, c); strings.TrimSpace(out) != "[]" {
+			t.Errorf("empty %s = %q", c, out)
+		}
 	}
 }
 
@@ -244,7 +229,7 @@ func TestEmptyLibrary(t *testing.T) {
 // and how to learn more.
 func TestRootHelp(t *testing.T) {
 	out := mustRun(t, "help")
-	mustContainAll(t, out, "Read highlights:", "Manage the library:", "--json", "cmpl help <command>")
+	mustContainAll(t, out, "Read highlights:", "Manage the library:", "prints JSON", "cmpl help <command>")
 	for _, c := range []string{"daily", "list", "search", "show", "similar", "books", "import", "serve", "backup"} {
 		mustContainAll(t, out, "\n  "+c+" ")
 		help := mustRun(t, "help", c)

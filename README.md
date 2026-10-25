@@ -70,8 +70,8 @@ network you trust.
 ### From the command line
 
 The same library is readable without the web app, by you or by an agent
-such as Claude Code. Each command prints text, or JSON with `--json`, and
-`cmpl help <command>` documents its flags and output.
+such as Claude Code. Each command prints JSON, and `cmpl help <command>`
+documents its flags and output.
 
 ```
 cmpl daily                         # today's daily highlights

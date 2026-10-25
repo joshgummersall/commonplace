@@ -107,8 +107,7 @@ The library:
   buried     A highlight hidden from the daily set. It still appears in
              list and search, marked "buried".
 
-Every read command prints text by default and JSON with --json, and takes
-ids from the others' output. A typical session:
+Every read command prints JSON and takes ids from the others' output. A typical session:
 
   cmpl daily                      today's highlights
   cmpl search 'fear of failure'   find highlights about an idea

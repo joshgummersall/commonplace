@@ -2,9 +2,7 @@ package cli
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"time"
 
@@ -13,10 +11,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The read commands print text for people by default and JSON with --json.
-// Both carry the same fields; the JSON shapes are documented in jsonHelp.
+// The read commands print JSON, in the shapes documented in jsonHelp.
 
-// highlightJSON is a highlight in --json output.
+// highlightJSON is a highlight in JSON output.
 type highlightJSON struct {
 	ID            int64      `json:"id"`
 	Text          string     `json:"text"`
@@ -58,7 +55,7 @@ type pageJSON struct {
 
 // jsonHelp is appended to the help of each read command.
 const jsonHelp = `
-With --json, a highlight is an object:
+A highlight is an object:
 
   {"id": 412, "text": "...", "book_id": 7, "title": "...", "author": "...",
    "location": "page 138, loc 2452-2456", "highlighted_at": "2022-03-07T01:58:16Z",
@@ -77,8 +74,7 @@ func addNotesFlag(cmd *cobra.Command, v *bool) {
 	cmd.Flags().BoolVar(v, "notes", false, "include each highlight's notes in full")
 }
 
-// attachNotes loads every highlight's notes. Highlights without notes get
-// an empty list, so text output knows not to print a count.
+// attachNotes loads every highlight's notes.
 func attachNotes(s *store.Store, hs []highlightJSON) error {
 	for i := range hs {
 		notes, err := s.Notes(hs[i].ID)
@@ -100,10 +96,6 @@ func segmentText(segs []search.Segment) string {
 		b.WriteString(sg.Text)
 	}
 	return b.String()
-}
-
-func addJSONFlag(cmd *cobra.Command, v *bool) {
-	cmd.Flags().BoolVar(v, "json", false, "print JSON instead of text")
 }
 
 func writeJSON(w io.Writer, v any) error {
@@ -162,75 +154,4 @@ func why(r search.Result) []string {
 		out = append(out, "similar in meaning")
 	}
 	return out
-}
-
-// printHighlight prints one highlight as text: a header line, the full
-// passage, then any notes and search reasons.
-func printHighlight(w io.Writer, h highlightJSON) {
-	head := []string{"#" + strconv.FormatInt(h.ID, 10), h.Title}
-	if h.Author != "" {
-		head = append(head, h.Author)
-	}
-	if h.Location != "" {
-		head = append(head, h.Location)
-	}
-	if h.HighlightedAt != nil {
-		head = append(head, h.HighlightedAt.Local().Format(time.DateOnly))
-	}
-	if h.Favorite {
-		head = append(head, "favorite")
-	}
-	if h.Buried {
-		head = append(head, "buried")
-	}
-	if h.NoteCount > 0 && h.Notes == nil {
-		head = append(head, fmt.Sprintf("%d %s", h.NoteCount, plural(h.NoteCount, "note", "notes")))
-	}
-	if h.Score != nil {
-		head = append(head, fmt.Sprintf("similarity %.2f", *h.Score))
-	}
-	fmt.Fprintln(w, strings.Join(head, " · "))
-	fmt.Fprintln(w, h.Text)
-	for _, n := range h.Notes {
-		fmt.Fprintf(w, "Note #%d (%s, %s): %s\n", n.ID, n.Source, n.CreatedAt.Local().Format(time.DateOnly), n.Body)
-	}
-	if h.NoteMatch != "" && h.Notes == nil {
-		fmt.Fprintf(w, "Note match: %s\n", h.NoteMatch)
-	}
-	if len(h.Why) > 0 {
-		fmt.Fprintf(w, "Matched: %s\n", strings.Join(h.Why, ", "))
-	}
-}
-
-func printHighlights(w io.Writer, hs []highlightJSON) {
-	for i, h := range hs {
-		if i > 0 {
-			fmt.Fprintln(w)
-		}
-		printHighlight(w, h)
-	}
-}
-
-// printPage prints a page of results and how to get the next one.
-func printPage(w io.Writer, p pageJSON, offset int) {
-	if p.Fallback != "" {
-		fmt.Fprintf(w, "Matched words only: %s.\n\n", p.Fallback)
-	}
-	if len(p.Results) == 0 {
-		fmt.Fprintf(w, "No highlights (%d total).\n", p.Total)
-		return
-	}
-	printHighlights(w, p.Results)
-	fmt.Fprintf(w, "\nShowing %d-%d of %d.", offset+1, offset+len(p.Results), p.Total)
-	if p.NextOffset != nil {
-		fmt.Fprintf(w, " Next page: --offset %d", *p.NextOffset)
-	}
-	fmt.Fprintln(w)
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/joshgummersall/commonplace/internal/daily"
 	"github.com/joshgummersall/commonplace/internal/search"
@@ -17,7 +16,7 @@ import (
 const defaultLimit = 20
 
 func (a *App) newDailyCommand() *cobra.Command {
-	var asJSON, withNotes bool
+	var withNotes bool
 	cmd := &cobra.Command{
 		Use:   "daily",
 		Short: "Print today's daily highlights",
@@ -33,7 +32,7 @@ change which highlights come up on later days.
 
 The JSON output is an array of highlights.`,
 		Example: `  cmpl daily
-  cmpl daily --notes --json`,
+  cmpl daily --notes`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := a.openStore()
@@ -53,19 +52,10 @@ The JSON output is an array of highlights.`,
 					return err
 				}
 			}
-			if asJSON {
-				return writeJSON(a.stdout, nonNil(hs))
-			}
-			if len(hs) == 0 {
-				fmt.Fprintln(a.stdout, "No highlights yet. Import some with cmpl import.")
-				return nil
-			}
-			printHighlights(a.stdout, hs)
-			return nil
+			return writeJSON(a.stdout, nonNil(hs))
 		},
 	}
 	addNotesFlag(cmd, &withNotes)
-	addJSONFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -76,7 +66,6 @@ type pageFlags struct {
 	limit     int
 	offset    int
 	notes     bool
-	asJSON    bool
 }
 
 func (f *pageFlags) add(cmd *cobra.Command) {
@@ -85,12 +74,10 @@ func (f *pageFlags) add(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&f.limit, "limit", defaultLimit, "highlights per page")
 	cmd.Flags().IntVar(&f.offset, "offset", 0, "highlights to skip, to fetch later pages")
 	addNotesFlag(cmd, &f.notes)
-	addJSONFlag(cmd, &f.asJSON)
 }
 
 const pageHelp = `
-Results come a page at a time. Text output ends with the --offset of the
-next page; JSON output is an object:
+Results come a page at a time, as an object:
 
   {"total": 1546, "next_offset": 20, "results": [highlight, ...]}
 
@@ -111,7 +98,7 @@ to find highlights about something.
 		Example: `  cmpl list
   cmpl list --favorites --notes --limit 50
   cmpl list --book meditations
-  cmpl list --book 7 --offset 20 --json`,
+  cmpl list --book 7 --offset 20`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runPage(cmd, "", f)
@@ -135,18 +122,18 @@ matched: words in the passage, a note, the title, or the author, or
 similar in meaning.
 
 Matching by meaning needs Ollama running with the embedding model (see
-cmpl serve). Without it, search matches words only and says so: in text
-output on the first line, in JSON as "fallback".
+cmpl serve). Without it, search matches words only and says why in
+"fallback".
 ` + pageHelp + `
 ` + jsonHelp + `
 
 Search results add "why": a list of where the query matched. When the
-query's words are in a note, "note_match" holds that part of the note
-(text output prints it as "Note match:"); pass --notes for whole notes.`,
+query's words are in a note, "note_match" holds that part of the note;
+pass --notes for whole notes.`,
 		Example: `  cmpl search stoicism
   cmpl search 'fear of death' --limit 5
   cmpl search '"the obstacle is the way"'
-  cmpl search attention --book 7 --favorites --json`,
+  cmpl search attention --book 7 --favorites`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runPage(cmd, strings.Join(args, " "), f)
@@ -207,11 +194,7 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 		next := f.offset + len(hs)
 		out.NextOffset = &next
 	}
-	if f.asJSON {
-		return writeJSON(a.stdout, out)
-	}
-	printPage(a.stdout, out, f.offset)
-	return nil
+	return writeJSON(a.stdout, out)
 }
 
 // resolveBook turns --book into a book id: a number is an id; anything
@@ -260,18 +243,17 @@ func resolveBook(s *store.Store, arg string) (int64, error) {
 }
 
 func (a *App) newShowCommand() *cobra.Command {
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "show <id>...",
 		Short: "Print highlights in full, with their notes",
 		Long: `Print one or more highlights by id, with all their notes. Ids come from
-the other read commands (#412 in text output, "id" in JSON) and from the
+the other read commands ("id") and from the
 web app's quote URLs (/h/412).
 ` + jsonHelp + `
 
 The JSON output is an array of highlights, each with its notes.`,
 		Example: `  cmpl show 412
-  cmpl show 412 977 --json`,
+  cmpl show 412 977`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ids, err := parseIDs(args)
@@ -296,21 +278,15 @@ The JSON output is an array of highlights, each with its notes.`,
 			if err := attachNotes(s, hs); err != nil {
 				return err
 			}
-			if asJSON {
-				return writeJSON(a.stdout, hs)
-			}
-			printHighlights(a.stdout, hs)
-			return nil
+			return writeJSON(a.stdout, hs)
 		},
 	}
-	addJSONFlag(cmd, &asJSON)
 	return cmd
 }
 
 func (a *App) newSimilarCommand() *cobra.Command {
 	var (
 		limit     int
-		asJSON    bool
 		withNotes bool
 	)
 	cmd := &cobra.Command{
@@ -332,7 +308,7 @@ The JSON output is an object:
 
 Each highlight adds "score".`,
 		Example: `  cmpl similar 412
-  cmpl similar 412 --limit 3 --json`,
+  cmpl similar 412 --limit 3`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if limit < 1 {
@@ -375,26 +351,11 @@ Each highlight adds "score".`,
 					return err
 				}
 			}
-			if asJSON {
-				return writeJSON(a.stdout, out)
-			}
-			for _, g := range []struct {
-				name string
-				hs   []highlightJSON
-			}{{"Other books", out.OtherBooks}, {"Same book", out.SameBook}} {
-				fmt.Fprintf(a.stdout, "== %s ==\n", g.name)
-				if len(g.hs) == 0 {
-					fmt.Fprintln(a.stdout, "None.")
-				}
-				printHighlights(a.stdout, g.hs)
-				fmt.Fprintln(a.stdout)
-			}
-			return nil
+			return writeJSON(a.stdout, out)
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 6, "highlights per group")
 	addNotesFlag(cmd, &withNotes)
-	addJSONFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -422,7 +383,6 @@ func scored(s *store.Store, hits []search.Hit) ([]highlightJSON, error) {
 }
 
 func (a *App) newBooksCommand() *cobra.Command {
-	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "books",
 		Short: "List books with their ids and highlight counts",
@@ -433,9 +393,8 @@ search.
 The JSON output is an array:
 
   [{"id": 7, "title": "Meditations", "author": "Marcus Aurelius", "highlights": 41}]`,
-		Example: `  cmpl books
-  cmpl books --json`,
-		Args: cobra.NoArgs,
+		Example: `  cmpl books`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := a.openStore()
 			if err != nil {
@@ -455,27 +414,9 @@ The JSON output is an array:
 			for i, b := range books {
 				out[i] = bookJSON{b.ID, b.Title, b.Author, b.Count}
 			}
-			if asJSON {
-				return writeJSON(a.stdout, out)
-			}
-			if len(out) == 0 {
-				fmt.Fprintln(a.stdout, "No books yet. Import highlights with cmpl import.")
-				return nil
-			}
-			// Titles run long, so the title and author come last, untabbed.
-			tw := tabwriter.NewWriter(a.stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "ID\tHIGHLIGHTS\tTITLE · AUTHOR")
-			for _, b := range out {
-				book := b.Title
-				if b.Author != "" {
-					book += " · " + b.Author
-				}
-				fmt.Fprintf(tw, "%d\t%d\t%s\n", b.ID, b.Highlights, book)
-			}
-			return tw.Flush()
+			return writeJSON(a.stdout, out)
 		},
 	}
-	addJSONFlag(cmd, &asJSON)
 	return cmd
 }
 
