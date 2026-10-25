@@ -6,9 +6,9 @@
 <div class="areas">
   {{range .Areas}}
   <section class="area">
-    {{template "theme-row" .Row}}
+    {{template "theme-row" .}}
     {{if .Themes}}
-    <div class="area-themes" id="area-{{.Row.ID}}-themes" hidden>
+    <div class="area-themes" id="area-{{.ID}}-themes" hidden>
       {{range .Themes}}{{template "theme-row" .}}{{end}}
     </div>
     {{end}}

@@ -8,21 +8,10 @@ import (
 	"github.com/joshgummersall/commonplace/internal/themes"
 )
 
-// themeRow is an area or theme as a row of the Themes page shows it.
-type themeRow struct {
-	store.ThemeSummary
-	// Children counts an area's themes.
-	Children int
-}
-
-type areaView struct {
-	Row    themeRow
-	Themes []themeRow
-}
-
 type themesPage struct {
 	page
-	Areas    []areaView
+	// Areas lists areas in order, each with its themes.
+	Areas    []store.ThemeSummary
 	Unthemed int
 	Status   refreshView
 }
@@ -61,17 +50,10 @@ func (s *Server) refreshView() (refreshView, error) {
 }
 
 func (s *Server) themeList(w http.ResponseWriter, r *http.Request) error {
-	tree, err := s.store.ThemeTree()
-	if err != nil {
-		return err
-	}
 	data := themesPage{page: page{Title: "Themes", Nav: "themes"}}
-	for _, a := range tree {
-		v := areaView{Row: themeRow{ThemeSummary: a, Children: len(a.Themes)}}
-		for _, t := range a.Themes {
-			v.Themes = append(v.Themes, themeRow{ThemeSummary: t})
-		}
-		data.Areas = append(data.Areas, v)
+	var err error
+	if data.Areas, err = s.store.ThemeTree(); err != nil {
+		return err
 	}
 	if data.Unthemed, err = s.store.UnthemedCount(); err != nil {
 		return err
@@ -108,24 +90,12 @@ func (s *Server) refreshStatus(w http.ResponseWriter, r *http.Request) error {
 	return s.render(w, "refresh-status", v)
 }
 
-func (s *Server) loadThemeRow(r *http.Request) (themeRow, error) {
+func (s *Server) loadThemeRow(r *http.Request) (store.ThemeSummary, error) {
 	id, err := pathID(r)
 	if err != nil {
-		return themeRow{}, err
+		return store.ThemeSummary{}, err
 	}
-	t, err := s.store.ThemeSummary(id)
-	if err != nil {
-		return themeRow{}, err
-	}
-	row := themeRow{ThemeSummary: t}
-	if t.IsArea() {
-		children, err := s.store.ThemeChildren(id)
-		if err != nil {
-			return themeRow{}, err
-		}
-		row.Children = len(children)
-	}
-	return row, nil
+	return s.store.ThemeSummary(id)
 }
 
 func (s *Server) themeRow(w http.ResponseWriter, r *http.Request) error {
@@ -137,7 +107,7 @@ func (s *Server) themeRow(w http.ResponseWriter, r *http.Request) error {
 }
 
 type renameData struct {
-	themeRow
+	store.ThemeSummary
 	Draft string
 	Error string
 }
@@ -147,7 +117,7 @@ func (s *Server) renameForm(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return s.render(w, "theme-rename", renameData{themeRow: row, Draft: row.Name})
+	return s.render(w, "theme-rename", renameData{ThemeSummary: row, Draft: row.Name})
 }
 
 func (s *Server) renameTheme(w http.ResponseWriter, r *http.Request) error {
@@ -158,7 +128,7 @@ func (s *Server) renameTheme(w http.ResponseWriter, r *http.Request) error {
 	name := r.FormValue("name")
 	if err := s.store.RenameTheme(row.ID, name); err != nil {
 		// Show the problem in the form rather than losing the draft.
-		return s.render(w, "theme-rename", renameData{themeRow: row, Draft: name, Error: err.Error()})
+		return s.render(w, "theme-rename", renameData{ThemeSummary: row, Draft: name, Error: err.Error()})
 	}
 	if row, err = s.loadThemeRow(r); err != nil {
 		return err

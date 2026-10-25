@@ -33,6 +33,7 @@ type ThemeSummary struct {
 	Renamed  bool
 	Count    int
 	Books    int
+	Children int         // an area's themes; 0 for a theme
 	TopBooks []BookCount // the books with the most highlights in it
 	Themes   []ThemeSummary
 }
@@ -139,7 +140,8 @@ func (s *Store) AllThemes() ([]Theme, error) {
 // summaries loads theme summaries matching where (on themes t), in order.
 func (s *Store) summaries(where string, args ...any) ([]ThemeSummary, error) {
 	rows, err := s.db.Query(`SELECT t.id, coalesce(t.parent_id, 0), t.name, t.renamed,
-			count(m.highlight_id), count(DISTINCT h.book_id)
+			count(m.highlight_id), count(DISTINCT h.book_id),
+			(SELECT count(*) FROM themes c WHERE c.parent_id = t.id)
 		FROM themes t
 		LEFT JOIN theme_members m ON m.theme_id = t.id
 		LEFT JOIN highlights h ON h.id = m.highlight_id
@@ -152,7 +154,7 @@ func (s *Store) summaries(where string, args ...any) ([]ThemeSummary, error) {
 	var out []ThemeSummary
 	for rows.Next() {
 		var t ThemeSummary
-		if err := rows.Scan(&t.ID, &t.ParentID, &t.Name, &t.Renamed, &t.Count, &t.Books); err != nil {
+		if err := rows.Scan(&t.ID, &t.ParentID, &t.Name, &t.Renamed, &t.Count, &t.Books, &t.Children); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -162,30 +164,48 @@ func (s *Store) summaries(where string, args ...any) ([]ThemeSummary, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	ids := make([]int64, len(out))
+	for i, t := range out {
+		ids[i] = t.ID
+	}
+	books, err := s.themeBooks(ids)
+	if err != nil {
+		return nil, err
+	}
 	for i := range out {
-		if out[i].TopBooks, err = s.themeBooks(out[i].ID); err != nil {
-			return nil, err
-		}
+		out[i].TopBooks = books[out[i].ID]
 	}
 	return out, nil
 }
 
-func (s *Store) themeBooks(id int64) ([]BookCount, error) {
-	rows, err := s.db.Query(`SELECT b.id, b.title, b.author, count(*) AS n
-		FROM theme_members m JOIN highlights h ON h.id = m.highlight_id JOIN books b ON b.id = h.book_id
-		WHERE m.theme_id = ?
-		GROUP BY b.id ORDER BY n DESC, b.title COLLATE NOCASE LIMIT ?`, id, topBooks)
+// themeBooks returns each theme's topBooks books with the most highlights
+// in it, in one query.
+func (s *Store) themeBooks(ids []int64) (map[int64][]BookCount, error) {
+	out := make(map[int64][]BookCount)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(`SELECT theme_id, id, title, author, n FROM (
+			SELECT m.theme_id, b.id, b.title, b.author, count(*) AS n,
+				row_number() OVER (PARTITION BY m.theme_id
+					ORDER BY count(*) DESC, b.title COLLATE NOCASE) AS pos
+			FROM theme_members m JOIN highlights h ON h.id = m.highlight_id JOIN books b ON b.id = h.book_id
+			WHERE m.theme_id IN (`+placeholders(len(ids))+`)
+			GROUP BY m.theme_id, b.id)
+		WHERE pos <= ? ORDER BY theme_id, pos`, append(int64Args(ids), topBooks)...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []BookCount
 	for rows.Next() {
-		var b BookCount
-		if err := rows.Scan(&b.ID, &b.Title, &b.Author, &b.Count); err != nil {
+		var (
+			tid int64
+			b   BookCount
+		)
+		if err := rows.Scan(&tid, &b.ID, &b.Title, &b.Author, &b.Count); err != nil {
 			return nil, err
 		}
-		out = append(out, b)
+		out[tid] = append(out[tid], b)
 	}
 	return out, rows.Err()
 }
@@ -333,6 +353,13 @@ func (s *Store) LastThemeRefresh() (r ThemeRefresh, ok bool, err error) {
 func (s *Store) CountImportedSince(t time.Time) (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT count(*) FROM highlights WHERE imported_at > ?`, formatTime(t)).Scan(&n)
+	return n, err
+}
+
+// CountHighlights counts every highlight.
+func (s *Store) CountHighlights() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT count(*) FROM highlights`).Scan(&n)
 	return n, err
 }
 

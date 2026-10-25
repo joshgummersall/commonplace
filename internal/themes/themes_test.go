@@ -428,3 +428,37 @@ func TestRefreshReportsLostNames(t *testing.T) {
 		t.Errorf("Lost = %v, want %q and not %q", res.Lost, gone, kept)
 	}
 }
+
+func TestPruneDropsDeclinedThemesAndEmptyAreas(t *testing.T) {
+	named := func(name string) *group { return &group{theme: store.Theme{Name: name}, spread: true} }
+	spreadArea := &group{spread: true, themes: []*group{named("")}}
+	themedArea := &group{themes: []*group{named("A"), named("")}}
+	emptied := &group{themes: []*group{named("")}}
+	got := prune([]*group{spreadArea, themedArea, emptied})
+	if len(got) != 2 || got[0] != spreadArea || got[1] != themedArea {
+		t.Fatalf("prune kept %d areas, want the spread one and the themed one", len(got))
+	}
+	if len(spreadArea.themes) != 0 || len(themedArea.themes) != 1 {
+		t.Errorf("declined themes survived: %d and %d", len(spreadArea.themes), len(themedArea.themes))
+	}
+}
+
+func TestRefreshProgressStaysWithinTotal(t *testing.T) {
+	s := openStore(t, library())
+	var last Progress
+	_, err := Refresh(context.Background(), s, model, &fakeNamer{}, now, func(p Progress) {
+		if p.Stage != StageNaming {
+			return
+		}
+		if p.Total == 0 || p.Done >= p.Total || p.Done < last.Done {
+			t.Errorf("progress %d of %d after %d of %d", p.Done, p.Total, last.Done, last.Total)
+		}
+		last = p
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.Done != last.Total-1 {
+		t.Errorf("naming ended at %d of %d", last.Done, last.Total)
+	}
+}
