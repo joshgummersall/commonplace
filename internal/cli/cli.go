@@ -60,11 +60,15 @@ func (a *App) embedder() embedding.Embedder {
 	if a.newEmbedder != nil {
 		return a.newEmbedder()
 	}
-	url := a.ollamaURL
-	if url == "" {
-		url = a.getenv("OLLAMA_HOST")
+	return embedding.NewOllama(a.ollamaBase(), a.model)
+}
+
+// ollamaBase is --ollama-url, else $OLLAMA_HOST; empty means the default.
+func (a *App) ollamaBase() string {
+	if a.ollamaURL != "" {
+		return a.ollamaURL
 	}
-	return embedding.NewOllama(url, a.model)
+	return a.getenv("OLLAMA_HOST")
 }
 
 func Run(args []string, stdout io.Writer) error {

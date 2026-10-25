@@ -16,6 +16,7 @@
   <footer class="meta">
     <cite data-yank-cite><a href="/search?book={{.BookID}}">{{.BookTitle}}</a>{{with .BookAuthor}} <span class="author">{{.}}</span>{{end}}</cite>
     {{with .Location}}<span class="loc">{{.}}</span>{{end}}
+    {{with .Theme}}<span class="theme-link">Theme: <a href="/search?theme={{.ID}}" data-action="theme" title="Highlights in this theme (t)">{{.Name}}</a></span>{{end}}
   </footer>
   <div class="actions">
     {{template "favorite" .}}

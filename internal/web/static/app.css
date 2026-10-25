@@ -188,8 +188,8 @@ input[type="search"], select, textarea {
 
 input[type="search"] { padding: 0.75rem 1rem; font-size: 1.0625rem; }
 
-.filters { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-.filters select { padding: 0.5rem; font-size: 0.875rem; min-width: 0; flex: 1; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.filters select { padding: 0.5rem; font-size: 0.875rem; min-width: 10rem; flex: 1; }
 .check {
   display: inline-flex;
   align-items: center;
@@ -264,6 +264,109 @@ textarea { padding: 0.75rem; line-height: 1.5; resize: vertical; }
 .similar-item > a:hover blockquote { color: var(--accent); }
 .similar-item blockquote { font-size: 1rem; line-height: 1.55; }
 .similar-item .meta { margin-top: 0.375rem; font-size: 0.8125rem; }
+
+/* Themes */
+
+.refresh {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 0.875rem 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.9375rem;
+}
+.refresh p { margin: 0 0 0.5rem; }
+.refresh p:last-child { margin-bottom: 0; }
+.refresh.is-running { border-color: var(--accent); }
+.refresh-action { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.refresh-action p { flex: 1 1 16rem; margin: 0; }
+.hint-text { font-size: 0.8125rem; color: var(--muted); }
+.refresh-state { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+.refresh-ok strong { color: var(--accent); }
+.refresh-error, .refresh-lost { color: var(--danger); }
+.refresh-last { color: var(--muted); }
+.refresh progress { width: 100%; accent-color: var(--accent); margin: 0.25rem 0 0.5rem; }
+
+.spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid var(--rule);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+.areas { display: flex; flex-direction: column; gap: 0.5rem; }
+.area {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.area-themes { border-top: 1px solid var(--rule); padding: 0.25rem 0; }
+
+.theme-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-left: 3px solid transparent;
+}
+.theme-row:focus { outline: none; }
+.theme-row.is-current { border-left-color: var(--accent); background: var(--accent-soft); }
+.area-themes .theme-row { padding-left: 2.25rem; }
+.theme-main { flex: 1; min-width: 0; }
+.theme-name { color: var(--text); text-decoration: none; font-weight: 600; }
+.is-area > .theme-main .theme-name { font-family: var(--serif); font-size: 1.125rem; }
+.theme-name:hover { text-decoration: underline; }
+.theme-count { font-size: 0.8125rem; color: var(--muted); margin-left: 0.5rem; white-space: nowrap; }
+.theme-books {
+  margin: 0.125rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-row .rename { font-size: 0.8125rem; visibility: hidden; flex: none; margin-top: 0.25rem; }
+.theme-row:hover .rename, .theme-row.is-current .rename, .theme-row .rename:focus-visible { visibility: visible; }
+
+.fold, .fold-spacer { flex: none; width: 1.5rem; }
+.fold {
+  min-height: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  justify-content: center;
+  color: var(--muted);
+}
+.fold span[aria-hidden] { display: inline-block; transition: transform 120ms; }
+.fold[aria-expanded="true"] span[aria-hidden] { transform: rotate(90deg); }
+
+.theme-rename input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.375rem 0.5rem;
+  width: 100%;
+}
+
+.unthemed { font-size: 0.875rem; margin-top: 1.25rem; }
+/* The empty state is moot once a first refresh has started. */
+.refresh.is-running ~ .empty { display: none; }
+
+.theme-filter { margin-bottom: 1.25rem; }
+.theme-filter h1 { font-family: var(--serif); font-size: 1.75rem; font-weight: 600; margin: 0.25rem 0; }
+.theme-kind, .theme-filter .theme-count, .related { font-size: 0.875rem; color: var(--muted); margin: 0; }
+.theme-filter .theme-count { margin: 0 0 0.25rem; white-space: normal; }
+
+.theme-link { flex-basis: 100%; font-size: 0.8125rem; }
+.theme-link a { color: var(--muted); }
 
 /* Keyboard */
 

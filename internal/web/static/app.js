@@ -1,7 +1,7 @@
 // Vim-style keyboard control. Everything else is htmx attributes in the
 // templates.
 //
-// Selectable things carry [data-item] ("quote" or "note"); their controls
+// Selectable things carry [data-item] ("quote", "note", or "theme"); their controls
 // carry [data-action], which keys trigger by clicking, so a key and a
 // mouse click run the same htmx request. The keymap and help text both
 // come from KEYS below.
@@ -11,7 +11,8 @@
   let current = -1;
   const storeKey = "cmpl:selected:" + location.pathname + location.search;
 
-  const items = () => [...document.querySelectorAll("main [data-item]")];
+  // Items inside a closed area on the Themes page are skipped.
+  const items = () => [...document.querySelectorAll("main [data-item]")].filter((el) => !el.closest("[hidden]"));
 
   function paint() {
     items().forEach((el, i) => el.classList.toggle("is-current", i === current));
@@ -113,6 +114,72 @@
       .finally(() => (undoing = false));
   }
 
+  // ---- folds (Themes page) ---------------------------------------------
+
+  // Open areas are remembered for the session, so coming back from a
+  // theme finds the page as it was left.
+  const foldKey = "cmpl:open-areas";
+
+  function openAreas() {
+    try {
+      return new Set(JSON.parse(sessionStorage.getItem(foldKey)) || []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function paintFold(id, open) {
+    const list = document.getElementById(`area-${id}-themes`);
+    if (!list) return false;
+    list.hidden = !open;
+    document.querySelector(`#theme-${id} [data-action="fold"]`)?.setAttribute("aria-expanded", String(open));
+    return true;
+  }
+
+  function applyFolds() {
+    const open = openAreas();
+    document.querySelectorAll("[data-area]").forEach((el) => paintFold(el.dataset.area, open.has(el.dataset.area)));
+  }
+
+  // setFolds opens or closes areas, keeping the same row selected (or
+  // its area, if the row was folded away).
+  function setFolds(ids, open) {
+    const el = current >= 0 ? items()[current] : null;
+    const saved = openAreas();
+    for (const id of ids) {
+      if (paintFold(id, open)) open ? saved.add(id) : saved.delete(id);
+    }
+    try {
+      sessionStorage.setItem(foldKey, JSON.stringify([...saved]));
+    } catch {}
+    if (!el) return;
+    const keep = el.closest("[hidden]") ? el.closest(".area").querySelector("[data-area]") : el;
+    select(items().indexOf(keep));
+  }
+
+  // The area of the selected row: the row itself, or the area it is in.
+  function currentArea() {
+    const el = selected("theme");
+    return el?.dataset.area ? el : el?.closest(".area")?.querySelector("[data-area]");
+  }
+
+  function fold(mode) {
+    const area = currentArea();
+    const list = area && document.getElementById(`area-${area.dataset.area}-themes`);
+    if (!list) return message(area ? "No themes inside" : "Select an area");
+    setFolds([area.dataset.area], mode === "toggle" ? list.hidden : mode === "open");
+  }
+
+  const foldAll = (open) => setFolds([...document.querySelectorAll("[data-area]")].map((el) => el.dataset.area), open);
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest('[data-action="fold"]');
+    if (!btn) return;
+    const row = btn.closest("[data-area]");
+    const list = document.getElementById(`area-${row.dataset.area}-themes`);
+    setFolds([row.dataset.area], list.hidden);
+  });
+
   // ---- commands --------------------------------------------------------
 
   const halfPage = () => {
@@ -200,11 +267,13 @@
     [["C-u"], "Half a page up", () => select(Math.max(current, 0) - halfPage())],
     [["zz"], "Center selection", () => select(Math.max(current, 0), { scroll: "center" })],
     ["Go"],
-    [["o", "Enter", "l"], "Open quote and notes", open],
+    [["o", "Enter", "l"], "Open quote and notes, or a theme's highlights", open],
     [["h", "C-o"], "Back", () => history.back()],
     [["gd"], "Daily", () => (location.href = "/")],
     [["gs", "/"], "Search", search],
     [["gf", "F"], "Favorites: toggle the filter on Search", toggleFavorites],
+    [["gt"], "Themes", () => (location.href = "/themes")],
+    [["t"], "The quote's theme", () => act("theme", "quote") || message("Not in a theme")],
     ["Act"],
     [["f"], "Favorite", () => act("favorite", "quote")],
     [["b"], "Bury / unbury: hide from Daily, keep in Search", bury],
@@ -213,7 +282,14 @@
     [["yy"], "Copy quote with source", yank],
     [["s"], "More like this", () => similarPanel() || act("similar", "quote")],
     [["i", "a"], "Write a note", writeNote],
-    [["cc"], "Edit selected note", () => act("edit", "note")],
+    [["cc"], "Edit selected note, or rename theme", () => act("edit", "note") || act("edit", "theme")],
+    ["Themes"],
+    [["za"], "Open or close the area", () => fold("toggle")],
+    [["zo"], "Open the area", () => fold("open")],
+    [["zc"], "Close the area", () => fold("close")],
+    [["zR"], "Open every area", () => foldAll(true)],
+    [["zM"], "Close every area", () => foldAll(false)],
+    [["R"], "Refresh themes", () => document.querySelector('[data-action="refresh"]')?.click()],
     [["?"], "Toggle this help", () => toggleHelp()],
   ];
 
@@ -320,9 +396,16 @@
 
   // ---- page lifecycle --------------------------------------------------
 
-  // htmx replaces items on favorite, bury, and note edits; keep the
-  // selection on the same position.
+  // Say when a request fails rather than silently doing nothing.
+  document.addEventListener("htmx:responseError", (e) => {
+    message(e.detail.xhr.responseText.trim() || `Request failed (${e.detail.xhr.status})`);
+  });
+  document.addEventListener("htmx:sendError", () => message("Can't reach cmpl serve"));
+
+  // htmx replaces items on favorite, bury, note edits, and renames; keep
+  // the selection on the same position.
   document.addEventListener("htmx:afterSettle", (e) => {
+    applyFolds();
     // Arriving from "More like this" on another page: select the first
     // similar highlight once the panel has loaded.
     if (e.target.classList?.contains("similar-body") && location.hash === "#similar") similarPanel();
@@ -337,6 +420,7 @@
   });
 
   renderHelp();
+  applyFolds();
   if (location.hash === "#write") {
     document.getElementById("write")?.focus();
   } else {

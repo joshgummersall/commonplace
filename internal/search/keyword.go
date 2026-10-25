@@ -13,6 +13,7 @@ import (
 type Query struct {
 	Text      string
 	BookID    int64 // 0 means any book
+	ThemeID   int64 // 0 means any theme; else only its highlights
 	Favorites bool  // only favorites
 	Limit     int   // 0 means PageSize
 	Offset    int   // rows to skip, for loading the next page
@@ -96,6 +97,14 @@ func Keyword(s *store.Store, q Query) ([]Result, error) {
 			LIMIT ? OFFSET ?`,
 			store.EntryColumns, bm25Weights, markOpen, markClose, markOpen, markClose,
 			markOpen, markClose, markOpen, markClose, from, where, bm25Weights)
+	} else if q.ThemeID != 0 {
+		// A theme lists its most typical highlights first.
+		sql = fmt.Sprintf(`SELECT %s, 0, '', '', '', ''
+			%s WHERE %s
+			ORDER BY (SELECT rank FROM theme_members WHERE theme_id = ? AND highlight_id = h.id), h.id
+			LIMIT ? OFFSET ?`,
+			store.EntryColumns, from, where)
+		args = append(args, q.ThemeID)
 	} else {
 		sql = fmt.Sprintf(`SELECT %s, 0, '', '', '', ''
 			%s WHERE %s
@@ -181,6 +190,10 @@ func clauses(q Query) (from, where string, args []any, ranked bool) {
 	if q.BookID != 0 {
 		conds = append(conds, "h.book_id = ?")
 		args = append(args, q.BookID)
+	}
+	if q.ThemeID != 0 {
+		conds = append(conds, "h.id IN (SELECT highlight_id FROM theme_members WHERE theme_id = ?)")
+		args = append(args, q.ThemeID)
 	}
 	if q.Favorites {
 		conds = append(conds, "h.favorite = 1")
