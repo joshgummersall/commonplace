@@ -1,20 +1,17 @@
 package embedding
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"strings"
 	"time"
+
+	"github.com/joshgummersall/commonplace/internal/ollama"
 )
 
 // DefaultOllamaURL is where a local Ollama listens by default.
-const DefaultOllamaURL = "http://localhost:11434"
+const DefaultOllamaURL = ollama.DefaultURL
 
 // DefaultModel is the embedding model used unless configured otherwise.
 const DefaultModel = "qwen3-embedding:0.6b"
@@ -26,28 +23,16 @@ const qwen3QueryInstruction = "Given a search query, retrieve passages from a re
 
 // Ollama embeds text with a model served by Ollama's /api/embed.
 type Ollama struct {
-	BaseURL string
-	Name    string // model name, e.g. "qwen3-embedding:0.6b"
-	Client  *http.Client
+	ollama.Client
+	Name string // model name, e.g. "qwen3-embedding:0.6b"
 }
 
 // NewOllama returns an Ollama embedder with defaults filled in.
 func NewOllama(baseURL, model string) *Ollama {
-	if baseURL == "" {
-		baseURL = DefaultOllamaURL
-	}
 	if model == "" {
 		model = DefaultModel
 	}
-	if !strings.Contains(baseURL, "://") {
-		// OLLAMA_HOST is often set as host:port.
-		baseURL = "http://" + baseURL
-	}
-	return &Ollama{
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		Name:    model,
-		Client:  &http.Client{Timeout: 2 * time.Minute},
-	}
+	return &Ollama{Client: ollama.New(baseURL, 2*time.Minute), Name: model}
 }
 
 func (o *Ollama) Model() string {
@@ -83,40 +68,13 @@ type embedRequest struct {
 
 type embedResponse struct {
 	Embeddings [][]float32 `json:"embeddings"`
-	Error      string      `json:"error"`
 }
 
 func (o *Ollama) embed(ctx context.Context, texts []string) ([][]float32, error) {
-	body, err := json.Marshal(embedRequest{Model: o.Name, Input: texts, Truncate: true})
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.BaseURL+"/api/embed", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := o.Client.Do(req)
-	if err != nil {
-		if isConnErr(err) {
-			return nil, fmt.Errorf("%w: Ollama is not reachable at %s", ErrUnavailable, o.BaseURL)
-		}
-		return nil, fmt.Errorf("ollama embed: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 256<<20))
-	if err != nil {
-		return nil, fmt.Errorf("ollama embed: read response: %w", err)
-	}
 	var out embedResponse
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("ollama embed: HTTP %d: %.200s", resp.StatusCode, raw)
-	}
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusNotFound && strings.Contains(out.Error, "not found") {
-			return nil, fmt.Errorf("%w: model %s is not pulled; run `ollama pull %s`", ErrUnavailable, o.Name, o.Name)
-		}
-		return nil, fmt.Errorf("ollama embed: HTTP %d: %s", resp.StatusCode, out.Error)
+	req := embedRequest{Model: o.Name, Input: texts, Truncate: true}
+	if err := o.Post(ctx, "/api/embed", o.Name, req, &out); err != nil {
+		return nil, err
 	}
 	if len(out.Embeddings) != len(texts) {
 		return nil, fmt.Errorf("ollama embed: got %d vectors for %d texts", len(out.Embeddings), len(texts))
@@ -128,15 +86,4 @@ func (o *Ollama) embed(ctx context.Context, texts []string) ([][]float32, error)
 		Normalize(v)
 	}
 	return out.Embeddings, nil
-}
-
-// isConnErr reports whether err means nothing answered: Ollama is not
-// running, or the host is wrong.
-func isConnErr(err error) bool {
-	var opErr *net.OpError
-	if errors.As(err, &opErr) && opErr.Op == "dial" {
-		return true
-	}
-	var dnsErr *net.DNSError
-	return errors.As(err, &dnsErr)
 }
