@@ -224,9 +224,3 @@ func parseTime(s sql.NullString) (time.Time, error) {
 	}
 	return t, nil
 }
-
-// MarkSeen sets a highlight's last_seen.
-func (t *Tx) MarkSeen(id int64, now time.Time) error {
-	_, err := t.tx.Exec(`UPDATE highlights SET last_seen = ? WHERE id = ?`, formatTime(now), id)
-	return err
-}

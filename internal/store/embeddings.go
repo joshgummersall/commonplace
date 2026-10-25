@@ -73,28 +73,59 @@ type Vector struct {
 // Vectors loads every embedding made by model, with each highlight's book
 // (for preferring other books in similar-highlight lists).
 func (s *Store) Vectors(model string) ([]Vector, error) {
-	rows, err := s.db.Query(`SELECT e.highlight_id, h.book_id, e.vector FROM embeddings e
+	embedded, err := s.embedded(model, false)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Vector, len(embedded))
+	for i, in := range embedded {
+		out[i] = Vector{HighlightID: in.ID, BookID: in.BookID, Vec: in.Vec}
+	}
+	return out, nil
+}
+
+// embedded loads every highlight embedded by model, by id, with its text
+// only when withText is set.
+func (s *Store) embedded(model string, withText bool) ([]ThemeInput, error) {
+	text := "''"
+	if withText {
+		text = "h.text"
+	}
+	rows, err := s.db.Query(`SELECT h.id, h.book_id, `+text+`, e.vector FROM embeddings e
 		JOIN highlights h ON h.id = e.highlight_id
-		WHERE e.model = ? ORDER BY e.highlight_id`, model)
+		WHERE e.model = ? ORDER BY h.id`, model)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Vector
+	var out []ThemeInput
 	for rows.Next() {
 		var (
-			v    Vector
+			in   ThemeInput
 			blob []byte
 		)
-		if err := rows.Scan(&v.HighlightID, &v.BookID, &blob); err != nil {
+		if err := rows.Scan(&in.ID, &in.BookID, &in.Text, &blob); err != nil {
 			return nil, err
 		}
-		if v.Vec, err = DecodeVector(blob); err != nil {
-			return nil, fmt.Errorf("embedding for %d: %w", v.HighlightID, err)
+		if in.Vec, err = DecodeVector(blob); err != nil {
+			return nil, fmt.Errorf("embedding for %d: %w", in.ID, err)
 		}
-		out = append(out, v)
+		out = append(out, in)
 	}
 	return out, rows.Err()
+}
+
+// EmbeddingStamp fingerprints model's embeddings cheaply: it changes
+// whenever one is added, replaced, or deleted, so an in-memory copy knows
+// when to reload.
+func (s *Store) EmbeddingStamp(model string) (string, error) {
+	var stamp string
+	err := s.db.QueryRow(`SELECT count(*) || ':' || coalesce(max(created_at), '') || ':' || coalesce(sum(highlight_id), 0)
+		FROM embeddings WHERE model = ?`, model).Scan(&stamp)
+	if err != nil {
+		return "", fmt.Errorf("check embeddings: %w", err)
+	}
+	return stamp, nil
 }
 
 // EncodeVector stores a vector as little-endian float32s.

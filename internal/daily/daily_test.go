@@ -119,19 +119,19 @@ func TestScore(t *testing.T) {
 	now := time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name string
-		c    candidate
+		c    store.DailyCandidate
 		want float64
 	}{
-		{"never seen", candidate{weight: 1}, 366},
-		{"seen just now", candidate{weight: 1, lastSeen: now}, 1},
-		{"seen 9 days ago", candidate{weight: 1, lastSeen: now.AddDate(0, 0, -9)}, 10},
-		{"seen 3 years ago is capped", candidate{weight: 1, lastSeen: now.AddDate(-3, 0, 0)}, 366},
-		{"favorite", candidate{weight: 1, favorite: true, lastSeen: now.AddDate(0, 0, -9)}, 30},
-		{"weight column", candidate{weight: 0.5, lastSeen: now.AddDate(0, 0, -9)}, 5},
-		{"seen in the future (clock skew)", candidate{weight: 1, lastSeen: now.Add(time.Hour)}, 1},
+		{"never seen", store.DailyCandidate{Weight: 1}, 366},
+		{"seen just now", store.DailyCandidate{Weight: 1, LastSeen: now}, 1},
+		{"seen 9 days ago", store.DailyCandidate{Weight: 1, LastSeen: now.AddDate(0, 0, -9)}, 10},
+		{"seen 3 years ago is capped", store.DailyCandidate{Weight: 1, LastSeen: now.AddDate(-3, 0, 0)}, 366},
+		{"favorite", store.DailyCandidate{Weight: 1, Favorite: true, LastSeen: now.AddDate(0, 0, -9)}, 30},
+		{"weight column", store.DailyCandidate{Weight: 0.5, LastSeen: now.AddDate(0, 0, -9)}, 5},
+		{"seen in the future (clock skew)", store.DailyCandidate{Weight: 1, LastSeen: now.Add(time.Hour)}, 1},
 	}
 	for _, tt := range tests {
-		if got := tt.c.score(now); got != tt.want {
+		if got := score(tt.c, now); got != tt.want {
 			t.Errorf("%s: score = %v, want %v", tt.name, got, tt.want)
 		}
 	}
@@ -142,13 +142,13 @@ func TestScore(t *testing.T) {
 // (score 2), and never-seen ones (366) most of all.
 func TestSampleFollowsWeights(t *testing.T) {
 	now := time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC)
-	var cands []candidate
+	var cands []store.DailyCandidate
 	for i := range 30 {
-		cands = append(cands, candidate{id: int64(i), weight: 1, lastSeen: now.AddDate(0, 0, -1)})
+		cands = append(cands, store.DailyCandidate{ID: int64(i), Weight: 1, LastSeen: now.AddDate(0, 0, -1)})
 	}
 	cands = append(cands,
-		candidate{id: 100, weight: 1, favorite: true, lastSeen: now.AddDate(0, 0, -30)},
-		candidate{id: 200, weight: 1},
+		store.DailyCandidate{ID: 100, Weight: 1, Favorite: true, LastSeen: now.AddDate(0, 0, -30)},
+		store.DailyCandidate{ID: 200, Weight: 1},
 	)
 	counts := make(map[int64]int)
 	const days = 2000
@@ -168,9 +168,9 @@ func TestSampleFollowsWeights(t *testing.T) {
 
 func TestSampleIsDeterministic(t *testing.T) {
 	now := time.Now()
-	var cands []candidate
+	var cands []store.DailyCandidate
 	for i := range 50 {
-		cands = append(cands, candidate{id: int64(i), weight: 1})
+		cands = append(cands, store.DailyCandidate{ID: int64(i), Weight: 1})
 	}
 	a := sample(cands, 10, now, seed("2026-10-24"))
 	b := sample(cands, 10, now, seed("2026-10-24"))

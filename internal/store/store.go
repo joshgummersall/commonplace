@@ -53,7 +53,9 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// DB exposes the underlying handle for packages that run their own queries.
+// DB exposes the underlying handle. Keyword search is its one caller
+// outside tests: its FTS5 query is built alongside the ranking it serves.
+// Everything else queries through Store methods.
 func (s *Store) DB() *sql.DB {
 	return s.db
 }
