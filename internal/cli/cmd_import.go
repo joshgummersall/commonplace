@@ -27,9 +27,16 @@ keeping its notes and favorite. Bookmarks are skipped.
 
 Entries that can't be parsed are reported as warnings and skipped.
 
-New and changed highlights are then embedded for semantic search. If
+New and changed highlights are then embedded for search by meaning. If
 Ollama isn't running, the import still succeeds; cmpl serve embeds them
-later.`,
+later.
+
+Output: counts on stdout, such as "12 added, 1 updated to a newer version,
+1533 unchanged", plus lines for notes, bookmarks, and skipped entries when
+there are any. Parse warnings and embedding problems go to stderr. It
+exits non-zero only when the file can't be read or stored.
+
+Safe to run while cmpl serve is running.`,
 		Example: `  cmpl import "/Volumes/Kindle/documents/My Clippings.txt"
   cmpl import clippings.txt --source crosspoint`,
 		Args: cobra.ExactArgs(1),

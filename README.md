@@ -67,6 +67,24 @@ cmpl serve          # http://127.0.0.1:8420
 The app has no login. It listens on localhost; only use `--host 0.0.0.0` on a
 network you trust.
 
+### From the command line
+
+The same library is readable without the web app, by you or by an agent
+such as Claude Code. Each command prints text, or JSON with `--json`, and
+`cmpl help <command>` documents its flags and output.
+
+```
+cmpl daily                         # today's daily highlights
+cmpl list --favorites              # newest first; --book, --limit, --offset
+cmpl search 'fear of failure'      # words and meaning, as in the web app
+cmpl show 412                      # one highlight in full, with notes
+cmpl similar 412                   # highlights close in meaning
+cmpl books                         # book ids for --book
+```
+
+These commands don't change highlights, notes, favorites, or burials, and
+`cmpl daily` doesn't count as reading the day's set.
+
 ### Keys
 
 The web app is built for the keyboard, with vim-style keys. Press `?` in the

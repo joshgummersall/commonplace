@@ -28,7 +28,10 @@ and safe to keep in a synced folder such as iCloud Drive. Keep the live
 database out of synced folders: it is several files that must change
 together.
 
-To restore, stop cmpl and copy a snapshot to the database path.`,
+Output: "Wrote <path>" for the snapshot, then "Removed <path>" for each
+snapshot --keep deletes. --keep only deletes files named like snapshots.
+
+To restore, stop cmpl serve and copy a snapshot to the database path.`,
 		Example: `  cmpl backup ~/Library/Mobile\ Documents/com~apple~CloudDocs/commonplace
   cmpl backup ~/backups/commonplace --keep 30`,
 		Args: cobra.ExactArgs(1),

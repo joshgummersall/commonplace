@@ -27,7 +27,12 @@ func (a *App) newServeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the web app",
-		Long: `Serve the Commonplace web app: the daily shuffle, search, and notes.
+		Long: `Serve the Commonplace web app: the daily shuffle, search, favorites,
+burying, and notes. It runs until interrupted, printing its address
+("Serving Commonplace at http://127.0.0.1:8420") and then request errors.
+
+The read commands (daily, list, search, show, similar, books) don't need
+it running; they read the database directly.
 
 Highlights missing embeddings (new imports, or all of them after
 --embed-model changes) are embedded in the background, retrying every
