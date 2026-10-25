@@ -16,20 +16,16 @@
 {{template "foot" .}}
 
 {{define "results"}}
-{{if .Searched}}
   {{if .Results}}
-  <p class="count">{{if .Semantic}}{{if .Words}}{{.Words}} with your words{{else}}No exact word matches{{end}}{{if .Meaning}} · {{.Meaning}} {{if .Words}}more {{end}}similar in meaning{{end}}{{else}}{{.Total}} {{plural .Total "result" "results"}}{{end}}</p>
+  <p class="count">{{if .Semantic}}{{if .Words}}{{.Words}} with your words{{else}}No exact word matches{{end}}{{if .Meaning}} · {{.Meaning}} {{if .Words}}more {{end}}similar in meaning{{end}}{{else if .Query.Text}}{{.Total}} {{plural .Total "result" "results"}}{{else}}{{.Total}} {{plural .Total "highlight" "highlights"}}{{end}}</p>
   {{with .Fallback}}<p class="fallback">Keyword matches only: {{.}}.</p>{{end}}
   <div class="cards">
     {{template "results-page" .}}
   </div>
   {{else}}
-  <p class="empty">{{if and .Query.Favorites (not .Query.Text)}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights match.{{end}}</p>
+  <p class="empty">{{if or .Query.Text .Query.BookID}}No highlights match.{{else if .Query.Favorites}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights yet. Import them with <code>cmpl import</code>.{{end}}</p>
   {{with .Fallback}}<p class="fallback">Keyword matches only: {{.}}.</p>{{end}}
   {{end}}
-{{else}}
-<p class="empty">Search your highlights, notes, titles, and authors by words or by idea. Put an exact phrase in "quotes". Check Favorites to list them all.</p>
-{{end}}
 {{end}}
 
 {{/* One page of results. The Load more button fetches the next page when

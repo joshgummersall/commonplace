@@ -98,11 +98,9 @@ func (s *Server) daily(w http.ResponseWriter, r *http.Request) error {
 
 type searchPage struct {
 	page
-	Query search.Query
-	Books []store.BookCount
-	// Searched is false on a bare /search with no query or filters.
-	Searched bool
-	Results  []card
+	Query   search.Query
+	Books   []store.BookCount
+	Results []card
 	// Total counts every match. When meaning-based matching ran, Words
 	// and Meaning split it into word matches and meaning-only matches.
 	Total    int
@@ -135,18 +133,16 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		q.Offset = n
 	}
 	data := searchPage{
-		page:     page{Title: "Search", Nav: "search"},
-		Query:    q,
-		Searched: q.Text != "" || q.BookID != 0 || q.Favorites,
+		page:  page{Title: "Search", Nav: "search"},
+		Query: q,
 	}
 	// Favorites is Search with the filter on, but gets its own nav link.
 	if q.Favorites {
 		data.page = page{Title: "Favorites", Nav: "favorites"}
 	}
-	if data.Searched {
-		if err := s.searchResults(r, &data); err != nil {
-			return err
-		}
+	// With no words or filters, every highlight is listed, newest first.
+	if err := s.searchResults(r, &data); err != nil {
+		return err
 	}
 	switch {
 	case isHTMX(r) && q.Offset > 0:

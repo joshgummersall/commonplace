@@ -174,7 +174,8 @@ func TestSearch(t *testing.T) {
 	mustContain(t, frag, "<mark>dead</mark>")
 	mustNotContain(t, frag, "<!doctype html>", "<select")
 
-	mustContain(t, h.get("/search"), "Search your highlights")
+	// With no words or filters, every highlight is listed.
+	mustContain(t, h.get("/search"), "2 highlights", "We are the dead.", "The impediment")
 	mustContain(t, h.get("/search?q=xylophone"), "No highlights match.")
 
 	var bookID int64
@@ -334,7 +335,7 @@ func TestSearchFavorites(t *testing.T) {
 	}
 
 	all := h.get("/search?fav=1")
-	mustContain(t, all, "2 results", "We are the dead.", "Freedom is the freedom", `id="fav" type="checkbox" name="fav" value="1" checked`)
+	mustContain(t, all, "2 highlights", "We are the dead.", "Freedom is the freedom", `id="fav" type="checkbox" name="fav" value="1" checked`)
 	mustNotContain(t, all, "impediment")
 	mustContain(t, all, `<a href="/search?fav=1" aria-current="page">Favorites</a>`, "<title>Favorites · Commonplace</title>")
 	mustNotContain(t, all, `<a href="/search" aria-current="page">`)
