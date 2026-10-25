@@ -25,6 +25,11 @@ const (
 	minGroup     = 5
 	minBooks     = 3
 	maxBookShare = 0.6
+	// A theme holding maxAreaShare of its area or more says what the area
+	// says, and gets a near-copy of its name, so it isn't shown. Themes
+	// that duplicated their area held 60-100% of it on the library this
+	// was tuned on; real sub-themes held 45% or less.
+	maxAreaShare = 0.6
 
 	// namePassages is how many of a group's most typical highlights the
 	// model reads to name it.
@@ -225,7 +230,12 @@ func buildAt(inputs []store.ThemeInput, vecs [][]float32, merges []merge, themeC
 		}
 		a := newGroup(inputs, vecs, g, true)
 		a.spread = ok
-		a.themes = themesIn[ai]
+		a.themes = slices.DeleteFunc(themesIn[ai], func(t *group) bool {
+			return float64(len(t.theme.Members)) >= maxAreaShare*float64(len(g))
+		})
+		if !ok && len(a.themes) == 0 {
+			continue
+		}
 		slices.SortStableFunc(a.themes, bySize)
 		out = append(out, a)
 	}

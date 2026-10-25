@@ -98,6 +98,13 @@ func TestBuildNestsThemesInAreasAndDropsSingleBookGroups(t *testing.T) {
 	if len(areas) != 2 {
 		t.Fatalf("got %d areas, want 2", len(areas))
 	}
+	// Cut so each area holds a single theme: the theme is the whole area,
+	// so only the area is kept.
+	for _, a := range buildAt(in, vecs, merges, 0.6, 0.6) {
+		if len(a.themes) != 0 {
+			t.Errorf("an area kept a theme holding all of it")
+		}
+	}
 	for _, a := range areas {
 		if len(a.theme.Members) != 24 || len(a.themes) != 2 {
 			t.Errorf("area has %d highlights and %d themes, want 24 and 2", len(a.theme.Members), len(a.themes))
