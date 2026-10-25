@@ -136,10 +136,6 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		page:  page{Title: "Search", Nav: "search"},
 		Query: q,
 	}
-	// Favorites is Search with the filter on, but gets its own nav link.
-	if q.Favorites {
-		data.page = page{Title: "Favorites", Nav: "favorites"}
-	}
 	// With no words or filters, every highlight is listed, newest first.
 	if err := s.searchResults(r, &data); err != nil {
 		return err

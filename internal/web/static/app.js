@@ -174,7 +174,7 @@
     q.select();
   }
 
-  // F toggles the Favorites filter on Search; elsewhere it opens it.
+  // gf toggles the Favorites filter on Search; elsewhere it opens it.
   function toggleFavorites() {
     const box = document.getElementById("fav");
     if (box) box.click();
@@ -204,8 +204,7 @@
     [["h", "C-o"], "Back", () => history.back()],
     [["gd"], "Daily", () => (location.href = "/")],
     [["gs", "/"], "Search", search],
-    [["gf"], "Favorites", () => (location.href = "/search?fav=1")],
-    [["F"], "Toggle the Favorites filter", toggleFavorites],
+    [["gf", "F"], "Favorites: toggle the filter on Search", toggleFavorites],
     ["Act"],
     [["f"], "Favorite", () => act("favorite", "quote")],
     [["b"], "Bury / unbury: hide from Daily, keep in Search", bury],
@@ -321,19 +320,6 @@
 
   // ---- page lifecycle --------------------------------------------------
 
-  // Favorites is Search with the filter on, so the nav link follows the
-  // checkbox as results update in place.
-  function syncNav() {
-    const fav = document.getElementById("fav")?.checked;
-    for (const a of document.querySelectorAll("header nav a")) {
-      const u = new URL(a.href);
-      const on = u.pathname === "/search" && u.searchParams.has("fav") === !!fav;
-      if (on) a.setAttribute("aria-current", "page");
-      else a.removeAttribute("aria-current");
-    }
-    document.title = (fav ? "Favorites" : "Search") + " · Commonplace";
-  }
-
   // htmx replaces items on favorite, bury, and note edits; keep the
   // selection on the same position.
   document.addEventListener("htmx:afterSettle", (e) => {
@@ -341,7 +327,6 @@
     // similar highlight once the panel has loaded.
     if (e.target.classList?.contains("similar-body") && location.hash === "#similar") similarPanel();
     if (e.target.id === "results") {
-      syncNav();
       current = -1;
       try {
         sessionStorage.removeItem(storeKey);

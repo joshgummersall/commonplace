@@ -337,8 +337,6 @@ func TestSearchFavorites(t *testing.T) {
 	all := h.get("/search?fav=1")
 	mustContain(t, all, "2 highlights", "We are the dead.", "Freedom is the freedom", `id="fav" type="checkbox" name="fav" value="1" checked`)
 	mustNotContain(t, all, "impediment")
-	mustContain(t, all, `<a href="/search?fav=1" aria-current="page">Favorites</a>`, "<title>Favorites · Commonplace</title>")
-	mustNotContain(t, all, `<a href="/search" aria-current="page">`)
 
 	// Combined with words, only matching favorites come back.
 	_, frag := h.do("GET", "/search?q=freedom&fav=1", nil, true)
