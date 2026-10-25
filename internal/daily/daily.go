@@ -2,8 +2,6 @@
 package daily
 
 import (
-	"database/sql"
-	"fmt"
 	"hash/fnv"
 	"math"
 	"math/rand/v2"
@@ -27,21 +25,14 @@ const (
 	favoriteBoost = 3.0
 )
 
-// candidate is what the weighting needs to know about a highlight.
-type candidate struct {
-	id       int64
-	weight   float64
-	favorite bool
-	lastSeen time.Time
-}
-
-func (c candidate) score(now time.Time) float64 {
+// score is a candidate's weight in the draw.
+func score(c store.DailyCandidate, now time.Time) float64 {
 	days := float64(maxAgeDays)
-	if !c.lastSeen.IsZero() {
-		days = math.Min(now.Sub(c.lastSeen).Hours()/24, maxAgeDays)
+	if !c.LastSeen.IsZero() {
+		days = math.Min(now.Sub(c.LastSeen).Hours()/24, maxAgeDays)
 	}
-	w := (1 + math.Max(days, 0)) * c.weight
-	if c.favorite {
+	w := (1 + math.Max(days, 0)) * c.Weight
+	if c.Favorite {
 		w *= favoriteBoost
 	}
 	return w
@@ -60,7 +51,7 @@ const maxSimilar = 0.60
 // skips that.
 func Today(s *store.Store, now time.Time, size int, model string) ([]store.Entry, error) {
 	day := now.Format(time.DateOnly)
-	ids, err := picks(s.DB(), day)
+	ids, err := s.DailyPicks(day)
 	if err != nil {
 		return nil, err
 	}
@@ -78,42 +69,13 @@ func Today(s *store.Store, now time.Time, size int, model string) ([]store.Entry
 
 // MarkSeen records that highlights were shown.
 func MarkSeen(s *store.Store, ids []int64, now time.Time) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	return s.InTx(func(tx *store.Tx) error {
-		for _, id := range ids {
-			if err := tx.MarkSeen(id, now); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	return s.MarkSeen(ids, now)
 }
 
-func picks(db *sql.DB, day string) ([]int64, error) {
-	rows, err := db.Query(`SELECT highlight_id FROM daily_picks WHERE day = ? ORDER BY position`, day)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-// choose samples the day's highlights and stores them. INSERT OR IGNORE on
-// the (day, position) key means a concurrent first request loses quietly;
-// re-reading afterwards returns whichever set won.
+// choose samples the day's highlights and stores them. If a concurrent
+// first request stored its set first, that set is returned instead.
 func choose(s *store.Store, day string, now time.Time, size int, model string) ([]int64, error) {
-	db := s.DB()
-	cands, err := candidates(db)
+	cands, err := s.DailyCandidates()
 	if err != nil {
 		return nil, err
 	}
@@ -128,48 +90,7 @@ func choose(s *store.Store, day string, now time.Time, size int, model string) (
 		}
 	}
 	chosen := vary(sample(cands, len(cands), now, seed(day)), size, vecs)
-
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	for i, id := range chosen {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO daily_picks (day, position, highlight_id) VALUES (?, ?, ?)`,
-			day, i, id); err != nil {
-			return nil, fmt.Errorf("store daily picks: %w", err)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return picks(db, day)
-}
-
-func candidates(db *sql.DB) ([]candidate, error) {
-	rows, err := db.Query(`SELECT id, weight, favorite, last_seen FROM highlights
-		WHERE buried = 0 ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []candidate
-	for rows.Next() {
-		var (
-			c    candidate
-			seen sql.NullString
-		)
-		if err := rows.Scan(&c.id, &c.weight, &c.favorite, &seen); err != nil {
-			return nil, err
-		}
-		if seen.Valid && seen.String != "" {
-			if c.lastSeen, err = time.Parse(time.RFC3339, seen.String); err != nil {
-				return nil, fmt.Errorf("highlight %d last_seen: %w", c.id, err)
-			}
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+	return s.SaveDailyPicks(day, chosen)
 }
 
 // seed derives the day's random seed from its date, so a given day and
@@ -183,7 +104,7 @@ func seed(day string) uint64 {
 // sample draws up to size candidates without replacement, each with
 // probability proportional to its score (Efraimidis-Spirakis: keep the
 // largest u^(1/w), compared in log space as log(u)/w).
-func sample(cands []candidate, size int, now time.Time, seed uint64) []int64 {
+func sample(cands []store.DailyCandidate, size int, now time.Time, seed uint64) []int64 {
 	rng := rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15))
 	type keyed struct {
 		id  int64
@@ -191,7 +112,7 @@ func sample(cands []candidate, size int, now time.Time, seed uint64) []int64 {
 	}
 	keys := make([]keyed, 0, len(cands))
 	for _, c := range cands {
-		w := c.score(now)
+		w := score(c, now)
 		if w <= 0 {
 			continue
 		}
@@ -199,7 +120,7 @@ func sample(cands []candidate, size int, now time.Time, seed uint64) []int64 {
 		for u == 0 {
 			u = rng.Float64()
 		}
-		keys = append(keys, keyed{c.id, math.Log(u) / w})
+		keys = append(keys, keyed{c.ID, math.Log(u) / w})
 	}
 	slices.SortFunc(keys, func(a, b keyed) int {
 		switch {

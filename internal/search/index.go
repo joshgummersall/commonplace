@@ -1,7 +1,6 @@
 package search
 
 import (
-	"fmt"
 	"slices"
 	"sync"
 
@@ -39,11 +38,9 @@ func NewIndex(s *store.Store, model string) *Index {
 }
 
 func (ix *Index) snapshot() ([]store.Vector, map[int64]int, error) {
-	var stamp string
-	err := ix.store.DB().QueryRow(`SELECT count(*) || ':' || coalesce(max(created_at), '') || ':' || coalesce(sum(highlight_id), 0)
-		FROM embeddings WHERE model = ?`, ix.model).Scan(&stamp)
+	stamp, err := ix.store.EmbeddingStamp(ix.model)
 	if err != nil {
-		return nil, nil, fmt.Errorf("check embeddings: %w", err)
+		return nil, nil, err
 	}
 	ix.mu.Lock()
 	defer ix.mu.Unlock()

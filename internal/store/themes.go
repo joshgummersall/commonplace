@@ -354,26 +354,5 @@ type ThemeInput struct {
 
 // ThemeInputs loads every highlight embedded by model, with its text.
 func (s *Store) ThemeInputs(model string) ([]ThemeInput, error) {
-	rows, err := s.db.Query(`SELECT h.id, h.book_id, h.text, e.vector FROM embeddings e
-		JOIN highlights h ON h.id = e.highlight_id
-		WHERE e.model = ? ORDER BY h.id`, model)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []ThemeInput
-	for rows.Next() {
-		var (
-			in   ThemeInput
-			blob []byte
-		)
-		if err := rows.Scan(&in.ID, &in.BookID, &in.Text, &blob); err != nil {
-			return nil, err
-		}
-		if in.Vec, err = DecodeVector(blob); err != nil {
-			return nil, fmt.Errorf("embedding for %d: %w", in.ID, err)
-		}
-		out = append(out, in)
-	}
-	return out, rows.Err()
+	return s.embedded(model, true)
 }
