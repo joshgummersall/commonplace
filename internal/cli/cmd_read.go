@@ -45,14 +45,9 @@ The JSON output is an array of highlights.`,
 			if err != nil {
 				return err
 			}
-			hs, err := toJSON(s, entries)
+			hs, err := toJSON(s, entries, withNotes)
 			if err != nil {
 				return err
-			}
-			if withNotes {
-				if err := attachNotes(s, hs); err != nil {
-					return err
-				}
 			}
 			return writeJSON(a.stdout, nonNil(hs))
 		},
@@ -172,12 +167,7 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 			return err
 		}
 	}
-	sr := &search.Searcher{Store: s}
-	if text != "" {
-		e := a.embedder()
-		sr.Embedder, sr.Index = e, search.NewIndex(s, e.Model())
-	}
-	p, err := sr.Run(cmd.Context(), q, search.ModeHybrid)
+	p, err := search.New(s, a.embedder()).Run(cmd.Context(), q, search.ModeHybrid)
 	if err != nil {
 		return err
 	}
@@ -185,19 +175,14 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 	for i, r := range p.Results {
 		entries[i] = r.Entry
 	}
-	hs, err := toJSON(s, entries)
+	hs, err := toJSON(s, entries, f.notes)
 	if err != nil {
 		return err
 	}
 	if text != "" {
 		for i, r := range p.Results {
-			hs[i].Why = why(r)
+			hs[i].Why = r.Why()
 			hs[i].NoteMatch = segmentText(r.NoteSnippet)
-		}
-	}
-	if f.notes {
-		if err := attachNotes(s, hs); err != nil {
-			return err
 		}
 	}
 	out := pageJSON{Total: p.Total, Results: nonNil(hs), Fallback: p.Fallback}
@@ -208,96 +193,80 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 	return writeJSON(a.stdout, out)
 }
 
-// resolveTheme turns --theme into a theme id: a number is an id; anything
-// else must match exactly one theme or area name, ignoring case, either
-// whole or as a part.
+// resolveTheme turns --theme into a theme or area id (see resolve).
 func resolveTheme(s *store.Store, arg string) (int64, error) {
 	areas, err := s.ThemeOutline()
 	if err != nil {
 		return 0, err
 	}
-	var all []store.ThemeSummary
+	var all []named
 	for _, a := range areas {
-		all = append(all, a)
-		all = append(all, a.Themes...)
+		all = append(all, named{a.ID, a.Name})
+		for _, t := range a.Themes {
+			all = append(all, named{t.ID, t.Name})
+		}
 	}
 	if len(all) == 0 {
 		return 0, fmt.Errorf("there are no themes yet; refresh them on the web app's Themes page")
 	}
-	if id, err := strconv.ParseInt(arg, 10, 64); err == nil {
-		for _, t := range all {
-			if t.ID == id {
-				return id, nil
-			}
-		}
-		return 0, fmt.Errorf("no theme with id %d; run cmpl themes to list them", id)
-	}
-	want := strings.ToLower(arg)
-	var matches []store.ThemeSummary
-	for _, t := range all {
-		name := strings.ToLower(t.Name)
-		if name == want {
-			return t.ID, nil
-		}
-		if strings.Contains(name, want) {
-			matches = append(matches, t)
-		}
-	}
-	switch len(matches) {
-	case 0:
-		return 0, fmt.Errorf("no theme name contains %q; run cmpl themes to list them", arg)
-	case 1:
-		return matches[0].ID, nil
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%q matches %d themes; pass an id instead:", arg, len(matches))
-	for _, m := range matches[:min(len(matches), 10)] {
-		fmt.Fprintf(&b, "\n  %d  %s", m.ID, m.Name)
-	}
-	if len(matches) > 10 {
-		fmt.Fprintf(&b, "\n  and %d more", len(matches)-10)
-	}
-	return 0, fmt.Errorf("%s", b.String())
+	return resolve(arg, "theme", "name", all)
 }
 
-// resolveBook turns --book into a book id: a number is an id; anything
-// else must match exactly one title, ignoring case, either whole or as a
-// part.
+// resolveBook turns --book into a book id (see resolve).
 func resolveBook(s *store.Store, arg string) (int64, error) {
 	books, err := s.Books()
 	if err != nil {
 		return 0, err
 	}
+	all := make([]named, len(books))
+	for i, b := range books {
+		all[i] = named{b.ID, b.Title}
+	}
+	return resolve(arg, "book", "title", all)
+}
+
+// named is a book or theme as --book and --theme match it.
+type named struct {
+	id   int64
+	name string
+}
+
+// resolve turns a --book or --theme value into an id: a number is an id;
+// anything else must match exactly one name, ignoring case, either whole
+// or as a part. noun is "book" or "theme", and field what its name is
+// called in messages.
+func resolve(arg, noun, field string, all []named) (int64, error) {
+	list := "cmpl " + noun + "s"
 	if id, err := strconv.ParseInt(arg, 10, 64); err == nil {
-		for _, b := range books {
-			if b.ID == id {
+		for _, n := range all {
+			if n.id == id {
 				return id, nil
 			}
 		}
-		return 0, fmt.Errorf("no book with id %d; run cmpl books to list them", id)
+		return 0, fmt.Errorf("no %s with id %d; run %s to list them", noun, id, list)
 	}
 	want := strings.ToLower(arg)
-	var matches []store.BookCount
-	for _, b := range books {
-		title := strings.ToLower(b.Title)
-		if title == want {
-			return b.ID, nil
+	var matches []named
+	for _, n := range all {
+		name := strings.ToLower(n.name)
+		if name == want {
+			return n.id, nil
 		}
-		if strings.Contains(title, want) {
-			matches = append(matches, b)
+		if strings.Contains(name, want) {
+			matches = append(matches, n)
 		}
 	}
 	switch len(matches) {
 	case 0:
-		return 0, fmt.Errorf("no book title contains %q; run cmpl books to list them", arg)
+		return 0, fmt.Errorf("no %s %s contains %q; run %s to list them", noun, field, arg, list)
 	case 1:
-		return matches[0].ID, nil
+		return matches[0].id, nil
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%q matches %d books; pass an id instead:", arg, len(matches))
+	fmt.Fprintf(&b, "%q matches %d %ss; pass an id instead:", arg, len(matches), noun)
 	const shown = 10
 	for _, m := range matches[:min(len(matches), shown)] {
-		fmt.Fprintf(&b, "\n  %d  %s", m.ID, m.Title)
+		fmt.Fprintf(&b, "\n  %d  %s", m.id, m.name)
 	}
 	if len(matches) > shown {
 		fmt.Fprintf(&b, "\n  and %d more", len(matches)-shown)
@@ -334,11 +303,8 @@ The JSON output is an array of highlights, each with its notes.`,
 			if len(entries) < len(ids) {
 				return fmt.Errorf("no highlight with id %d", missingID(ids, entries))
 			}
-			hs, err := toJSON(s, entries)
+			hs, err := toJSON(s, entries, true)
 			if err != nil {
-				return err
-			}
-			if err := attachNotes(s, hs); err != nil {
 				return err
 			}
 			return writeJSON(a.stdout, hs)
@@ -388,8 +354,7 @@ Each highlight adds "score".`,
 			if _, err := s.Entry(ids[0]); err != nil {
 				return fmt.Errorf("no highlight with id %d", ids[0])
 			}
-			ix := search.NewIndex(s, a.embedder().Model())
-			other, same, ok, err := ix.Similar(ids[0], limit)
+			other, same, ok, err := search.New(s, a.embedder()).Index.SimilarEntries(ids[0], limit)
 			if err != nil {
 				return err
 			}
@@ -400,19 +365,11 @@ Each highlight adds "score".`,
 				OtherBooks []highlightJSON `json:"other_books"`
 				SameBook   []highlightJSON `json:"same_book"`
 			}{}
-			if out.OtherBooks, err = scored(s, other); err != nil {
+			if out.OtherBooks, err = scored(s, other, withNotes); err != nil {
 				return err
 			}
-			if out.SameBook, err = scored(s, same); err != nil {
+			if out.SameBook, err = scored(s, same, withNotes); err != nil {
 				return err
-			}
-			if withNotes {
-				if err := attachNotes(s, out.OtherBooks); err != nil {
-					return err
-				}
-				if err := attachNotes(s, out.SameBook); err != nil {
-					return err
-				}
 			}
 			return writeJSON(a.stdout, out)
 		},
@@ -422,25 +379,18 @@ Each highlight adds "score".`,
 	return cmd
 }
 
-// scored loads hits as highlights with their scores.
-func scored(s *store.Store, hits []search.Hit) ([]highlightJSON, error) {
-	ids := make([]int64, len(hits))
-	scores := make(map[int64]float32, len(hits))
+// scored converts similar highlights, adding their scores.
+func scored(s *store.Store, hits []search.Scored, withNotes bool) ([]highlightJSON, error) {
+	entries := make([]store.Entry, len(hits))
 	for i, h := range hits {
-		ids[i] = h.ID
-		scores[h.ID] = h.Score
+		entries[i] = h.Entry
 	}
-	entries, err := s.Entries(ids)
-	if err != nil {
-		return nil, err
-	}
-	hs, err := toJSON(s, entries)
+	hs, err := toJSON(s, entries, withNotes)
 	if err != nil {
 		return nil, err
 	}
 	for i := range hs {
-		sc := scores[hs[i].ID]
-		hs[i].Score = &sc
+		hs[i].Score = &hits[i].Score
 	}
 	return nonNil(hs), nil
 }

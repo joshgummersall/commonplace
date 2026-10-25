@@ -49,13 +49,12 @@ The file defaults to eval.yaml next to the database. Format:
 			if err != nil {
 				return err
 			}
-			e := a.embedder()
-			sr := &search.Searcher{Store: s, Embedder: e, Index: search.NewIndex(s, e.Model())}
+			sr := search.New(s, a.embedder())
 			r, err := eval.Run(cmd.Context(), sr, f)
 			if err != nil {
 				return err
 			}
-			a.printEval(r, e.Model(), verbose)
+			a.printEval(r, sr.Embedder.Model(), verbose)
 			return nil
 		},
 	}

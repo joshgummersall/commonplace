@@ -60,11 +60,18 @@ type Searcher struct {
 	Index    *Index
 }
 
+// New returns a Searcher over s. With a nil e, only keyword search works.
+func New(s *store.Store, e embedding.Embedder) *Searcher {
+	sr := &Searcher{Store: s}
+	if e != nil {
+		sr.Embedder, sr.Index = e, NewIndex(s, e.Model())
+	}
+	return sr
+}
+
 // Run searches one page in q's mode. Listing (no text) ignores the mode.
 func (sr *Searcher) Run(ctx context.Context, q Query, mode Mode) (Page, error) {
-	if q.Limit <= 0 {
-		q.Limit = PageSize
-	}
+	q.Limit = q.limit()
 	if q.Text == "" || mode == ModeKeyword {
 		return sr.keyword(q)
 	}
@@ -220,4 +227,39 @@ func Fuse(lists ...[]int64) []int64 {
 		return 0
 	})
 	return order
+}
+
+// limit is Limit, or PageSize when unset.
+func (q Query) limit() int {
+	if q.Limit <= 0 {
+		return PageSize
+	}
+	return q.Limit
+}
+
+// Reason says where a match in f was found, for "why" lists.
+func (f Field) Reason() string {
+	switch f {
+	case FieldText:
+		return "words in the passage"
+	case FieldNotes:
+		return "words in a note"
+	case FieldTitle:
+		return "words in the title"
+	case FieldAuthor:
+		return "words in the author"
+	}
+	return "words in the " + string(f)
+}
+
+// Why explains in plain terms why a search listed r.
+func (r Result) Why() []string {
+	var out []string
+	for _, f := range r.Matched {
+		out = append(out, f.Reason())
+	}
+	if r.Similar {
+		out = append(out, "similar in meaning")
+	}
+	return out
 }

@@ -83,21 +83,6 @@ func addNotesFlag(cmd *cobra.Command, v *bool) {
 	cmd.Flags().BoolVar(v, "notes", false, "include each highlight's notes in full")
 }
 
-// attachNotes loads every highlight's notes.
-func attachNotes(s *store.Store, hs []highlightJSON) error {
-	for i := range hs {
-		notes, err := s.Notes(hs[i].ID)
-		if err != nil {
-			return err
-		}
-		hs[i].Notes = make([]noteJSON, len(notes))
-		for j, n := range notes {
-			hs[i].Notes[j] = noteJSON{ID: n.ID, Source: n.Source, Body: n.Body, CreatedAt: n.CreatedAt.UTC()}
-		}
-	}
-	return nil
-}
-
 // segmentText joins a snippet's segments into plain text.
 func segmentText(segs []search.Segment) string {
 	var b strings.Builder
@@ -114,60 +99,37 @@ func writeJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
-// toJSON converts entries, filling note counts.
-func toJSON(s *store.Store, entries []store.Entry) ([]highlightJSON, error) {
-	ids := make([]int64, len(entries))
-	for i, e := range entries {
-		ids[i] = e.ID
-	}
-	counts, err := s.NoteCounts(ids)
+// toJSON converts entries, filling note counts and themes, and with
+// withNotes each highlight's notes.
+func toJSON(s *store.Store, entries []store.Entry, withNotes bool) ([]highlightJSON, error) {
+	items, err := s.Items(entries, withNotes)
 	if err != nil {
 		return nil, err
 	}
-	themes, err := s.ThemesOf(ids)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]highlightJSON, len(entries))
-	for i, e := range entries {
+	out := make([]highlightJSON, len(items))
+	for i, it := range items {
 		h := highlightJSON{
-			ID:        e.ID,
-			Text:      e.Text,
-			BookID:    e.BookID,
-			Title:     e.BookTitle,
-			Author:    e.BookAuthor,
-			Location:  e.Location,
-			Favorite:  e.Favorite,
-			Buried:    e.Buried,
-			NoteCount: counts[e.ID],
+			ID:        it.ID,
+			Text:      it.Text,
+			BookID:    it.BookID,
+			Title:     it.BookTitle,
+			Author:    it.BookAuthor,
+			Location:  it.Location,
+			Favorite:  it.Favorite,
+			Buried:    it.Buried,
+			NoteCount: it.NoteCount,
 		}
-		if t, ok := themes[e.ID]; ok {
+		if t := it.Theme; t != nil {
 			h.Theme = &themeRefJSON{t.ID, t.Name}
 		}
-		if !e.HighlightedAt.IsZero() {
-			t := e.HighlightedAt.UTC()
+		if !it.HighlightedAt.IsZero() {
+			t := it.HighlightedAt.UTC()
 			h.HighlightedAt = &t
+		}
+		for _, n := range it.Notes {
+			h.Notes = append(h.Notes, noteJSON{ID: n.ID, Source: n.Source, Body: n.Body, CreatedAt: n.CreatedAt.UTC()})
 		}
 		out[i] = h
 	}
 	return out, nil
-}
-
-var whyText = map[search.Field]string{
-	search.FieldText:   "words in the passage",
-	search.FieldNotes:  "words in a note",
-	search.FieldTitle:  "words in the title",
-	search.FieldAuthor: "words in the author",
-}
-
-// why explains a search hit, as the web app does.
-func why(r search.Result) []string {
-	var out []string
-	for _, f := range r.Matched {
-		out = append(out, whyText[f])
-	}
-	if r.Similar {
-		out = append(out, "similar in meaning")
-	}
-	return out
 }

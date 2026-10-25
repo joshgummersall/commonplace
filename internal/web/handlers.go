@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/joshgummersall/commonplace/internal/daily"
 	"github.com/joshgummersall/commonplace/internal/search"
@@ -13,10 +15,7 @@ import (
 
 // card is a highlight as the card template shows it.
 type card struct {
-	store.Entry
-	Notes int
-	// Theme is the most specific theme the highlight belongs to, if any.
-	Theme *store.ThemeRef
+	store.Item
 	// Snippet, NoteSnippet, and Why are set on search results.
 	Snippet     []search.Segment
 	NoteSnippet []search.Segment
@@ -28,38 +27,20 @@ type card struct {
 }
 
 func (s *Server) cards(entries []store.Entry) ([]card, error) {
-	ids := make([]int64, len(entries))
-	for i, e := range entries {
-		ids[i] = e.ID
-	}
-	notes, err := s.store.NoteCounts(ids)
+	items, err := s.store.Items(entries, false)
 	if err != nil {
 		return nil, err
 	}
-	themesOf, err := s.store.ThemesOf(ids)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]card, len(entries))
-	for i, e := range entries {
-		out[i] = card{Entry: e, Notes: notes[e.ID]}
-		if t, ok := themesOf[e.ID]; ok {
-			out[i].Theme = &t
-		}
+	out := make([]card, len(items))
+	for i, it := range items {
+		out[i] = card{Item: it}
 	}
 	return out, nil
 }
 
 func (s *Server) card(id int64) (card, error) {
-	e, err := s.store.Entry(id)
-	if err != nil {
-		return card{}, err
-	}
-	cs, err := s.cards([]store.Entry{e})
-	if err != nil {
-		return card{}, err
-	}
-	return cs[0], nil
+	it, err := s.store.Item(id, false)
+	return card{Item: it}, err
 }
 
 func pathID(r *http.Request) (int64, error) {
@@ -222,29 +203,18 @@ func (s *Server) searchResults(r *http.Request, data *searchPage) error {
 	for i, res := range p.Results {
 		cards[i].Snippet = res.Snippet
 		cards[i].NoteSnippet = res.NoteSnippet
-		cards[i].Why = why(res)
+		for _, w := range res.Why() {
+			cards[i].Why = append(cards[i].Why, capitalize(w))
+		}
 	}
 	data.Results = cards
 	return nil
 }
 
-var fieldReasons = map[search.Field]string{
-	search.FieldText:   "Words in the passage",
-	search.FieldNotes:  "Words in your note",
-	search.FieldTitle:  "Words in the title",
-	search.FieldAuthor: "Words in the author",
-}
-
-// why explains a search hit in plain terms.
-func why(r search.Result) []string {
-	var out []string
-	for _, f := range r.Matched {
-		out = append(out, fieldReasons[f])
-	}
-	if r.Similar {
-		out = append(out, "Similar in meaning")
-	}
-	return out
+// capitalize upper-cases a reason's first letter for display.
+func capitalize(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	return string(unicode.ToUpper(r)) + s[size:]
 }
 
 type highlightPage struct {
@@ -282,13 +252,8 @@ type similarData struct {
 	Ready bool
 	// Reason says why similar highlights are unavailable.
 	Reason     string
-	OtherBooks []similarItem
-	SameBook   []similarItem
-}
-
-type similarItem struct {
-	store.Entry
-	Score float32
+	OtherBooks []search.Scored
+	SameBook   []search.Scored
 }
 
 // similar renders the Similar panel's contents for a quote page. It is
@@ -307,7 +272,7 @@ func (s *Server) similar(w http.ResponseWriter, r *http.Request) error {
 		data.Reason = "Similar highlights need an embedding model; start Ollama and restart cmpl serve."
 		return s.render(w, "similar", data)
 	}
-	other, same, ok, err := s.searcher.Index.Similar(id, similarK)
+	other, same, ok, err := s.searcher.Index.SimilarEntries(id, similarK)
 	if err != nil {
 		return err
 	}
@@ -315,34 +280,8 @@ func (s *Server) similar(w http.ResponseWriter, r *http.Request) error {
 		data.Reason = "This highlight isn't embedded yet. Similar highlights appear once Ollama has processed it."
 		return s.render(w, "similar", data)
 	}
-	data.Ready = true
-	if data.OtherBooks, err = s.similarItems(other); err != nil {
-		return err
-	}
-	if data.SameBook, err = s.similarItems(same); err != nil {
-		return err
-	}
+	data.Ready, data.OtherBooks, data.SameBook = true, other, same
 	return s.render(w, "similar", data)
-}
-
-func (s *Server) similarItems(hits []search.Hit) ([]similarItem, error) {
-	ids := make([]int64, len(hits))
-	scores := make(map[int64]float32, len(hits))
-	for i, h := range hits {
-		ids[i] = h.ID
-		scores[h.ID] = h.Score
-	}
-	// Entries skips ids deleted since the index loaded, so match scores
-	// by id rather than position.
-	entries, err := s.store.Entries(ids)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]similarItem, len(entries))
-	for i, e := range entries {
-		out[i] = similarItem{Entry: e, Score: scores[e.ID]}
-	}
-	return out, nil
 }
 
 func (s *Server) favorite(w http.ResponseWriter, r *http.Request) error {

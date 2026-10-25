@@ -131,3 +131,44 @@ func topK(hits []Hit, k int) []Hit {
 	}
 	return hits
 }
+
+// Scored is a highlight and its similarity to another.
+type Scored struct {
+	store.Entry
+	Score float32 // cosine similarity, -1 to 1
+}
+
+// SimilarEntries is Similar with each hit loaded as an entry. Hits deleted
+// since the index loaded are left out.
+func (ix *Index) SimilarEntries(id int64, k int) (other, same []Scored, ok bool, err error) {
+	otherHits, sameHits, ok, err := ix.Similar(id, k)
+	if !ok || err != nil {
+		return nil, nil, ok, err
+	}
+	if other, err = ix.scored(otherHits); err != nil {
+		return nil, nil, false, err
+	}
+	if same, err = ix.scored(sameHits); err != nil {
+		return nil, nil, false, err
+	}
+	return other, same, true, nil
+}
+
+func (ix *Index) scored(hits []Hit) ([]Scored, error) {
+	ids := make([]int64, len(hits))
+	scores := make(map[int64]float32, len(hits))
+	for i, h := range hits {
+		ids[i] = h.ID
+		scores[h.ID] = h.Score
+	}
+	// Entries skips missing ids, so match scores by id, not position.
+	entries, err := ix.store.Entries(ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Scored, len(entries))
+	for i, e := range entries {
+		out[i] = Scored{Entry: e, Score: scores[e.ID]}
+	}
+	return out, nil
+}

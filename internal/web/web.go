@@ -63,12 +63,9 @@ type Options struct {
 // New builds a Server. It parses templates up front so a broken template
 // fails at startup rather than on first request.
 func New(s *store.Store, opts Options) (*Server, error) {
-	srv := &Server{store: s, logger: opts.Logger, now: opts.Now, files: embedded}
-	srv.searcher = &search.Searcher{Store: s}
+	srv := &Server{store: s, searcher: search.New(s, opts.Embedder), logger: opts.Logger, now: opts.Now, files: embedded}
 	if opts.Embedder != nil {
 		srv.embedModel = opts.Embedder.Model()
-		srv.searcher.Embedder = opts.Embedder
-		srv.searcher.Index = search.NewIndex(s, opts.Embedder.Model())
 	}
 	if srv.logger == nil {
 		srv.logger = slog.Default()
