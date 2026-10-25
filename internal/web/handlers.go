@@ -83,7 +83,7 @@ type dailyPage struct {
 
 func (s *Server) daily(w http.ResponseWriter, r *http.Request) error {
 	now := s.now()
-	entries, err := daily.Today(s.store, now, daily.DefaultSize)
+	entries, err := daily.Today(s.store, now, daily.DefaultSize, s.embedModel)
 	if err != nil {
 		return err
 	}

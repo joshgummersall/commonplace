@@ -26,8 +26,9 @@ app's Daily page shows.
 The set is chosen on the first request of the day (from here or the web
 app) and stays fixed for that day. Highlights not seen for longest come
 up first, and favorites come up more often. Buried highlights are left
-out. Printing the set here does not count as reading it, so it does not
-change which highlights come up on later days.
+out, and no two in a set make nearly the same point. Printing the set
+here does not count as reading it, so it does not change which
+highlights come up on later days.
 ` + jsonHelp + `
 
 The JSON output is an array of highlights.`,
@@ -39,7 +40,7 @@ The JSON output is an array of highlights.`,
 			if err != nil {
 				return err
 			}
-			entries, err := daily.Today(s, a.now(), daily.DefaultSize)
+			entries, err := daily.Today(s, a.now(), daily.DefaultSize, a.embedder().Model())
 			if err != nil {
 				return err
 			}

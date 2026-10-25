@@ -31,6 +31,9 @@ var embedded embed.FS
 type Server struct {
 	store    *store.Store
 	searcher *search.Searcher
+	// embedModel names the embeddings Daily uses to vary its set; "" when
+	// there is no embedder.
+	embedModel string
 	// themes refreshes themes; nil without an embedder and a namer.
 	themes *themes.Refresher
 	logger *slog.Logger
@@ -63,6 +66,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	srv := &Server{store: s, logger: opts.Logger, now: opts.Now, files: embedded}
 	srv.searcher = &search.Searcher{Store: s}
 	if opts.Embedder != nil {
+		srv.embedModel = opts.Embedder.Model()
 		srv.searcher.Embedder = opts.Embedder
 		srv.searcher.Index = search.NewIndex(s, opts.Embedder.Model())
 	}

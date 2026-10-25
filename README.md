@@ -58,7 +58,8 @@ cmpl serve          # http://127.0.0.1:8420
 ```
 
 - **Daily** shows about ten highlights, chosen once per day. Ones you haven't
-  seen for longest come up first; favorites come up more often.
+  seen for longest come up first; favorites come up more often; no two make
+  nearly the same point.
 - **Search** matches your words and your meaning together and says why each
   result is listed. Filter by book, theme, or favorites.
 - **Themes** groups highlights that say related things, usually across books,

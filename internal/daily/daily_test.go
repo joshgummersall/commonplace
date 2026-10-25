@@ -46,7 +46,7 @@ func ids(es []store.Entry) []int64 {
 
 func mustToday(t *testing.T, s *store.Store, now time.Time) []store.Entry {
 	t.Helper()
-	es, err := Today(s, now, DefaultSize)
+	es, err := Today(s, now, DefaultSize, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,5 +183,70 @@ func TestSampleIsDeterministic(t *testing.T) {
 	}
 	if got := sample(cands, 100, now, 1); len(got) != 50 {
 		t.Errorf("size above candidate count returned %d", len(got))
+	}
+}
+
+func TestVarySkipsNearRestatements(t *testing.T) {
+	vecs := map[int64][]float32{
+		1: {1, 0, 0},
+		2: {0.99, 0.141, 0}, // nearly 1
+		3: {0, 1, 0},
+		4: {0, 0, 1},
+	}
+	if got := vary([]int64{1, 2, 3, 4}, 3, vecs); fmt.Sprint(got) != "[1 3 4]" {
+		t.Errorf("vary = %v, want [1 3 4]", got)
+	}
+	// Too few distinct highlights: the skipped one fills the set.
+	if got := vary([]int64{1, 2, 3}, 3, vecs); fmt.Sprint(got) != "[1 3 2]" {
+		t.Errorf("vary = %v, want [1 3 2]", got)
+	}
+	// Highlights without vectors are never skipped.
+	if got := vary([]int64{5, 6, 1}, 3, vecs); fmt.Sprint(got) != "[5 6 1]" {
+		t.Errorf("vary = %v, want [5 6 1]", got)
+	}
+}
+
+func TestTodayKeepsOneOfEachPoint(t *testing.T) {
+	// 30 highlights: 15 making one point, 15 each on its own axis.
+	s := seedStore(t, 30)
+	const model = "test/model"
+	var ids []int64
+	vecs := make([][]float32, 30)
+	rows, err := s.DB().Query(`SELECT id FROM highlights ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id int64
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	for i := range vecs {
+		vecs[i] = make([]float32, 16)
+		if i < 15 {
+			vecs[i][0] = 1
+		} else {
+			vecs[i][i-14] = 1
+		}
+	}
+	if err := s.SaveEmbeddings(model, ids, vecs, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for d := range 5 {
+		day := time.Date(2026, 10, 24+d, 8, 0, 0, 0, time.Local)
+		es, err := Today(s, day, DefaultSize, model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		same := 0
+		for _, e := range es {
+			if e.ID <= ids[14] {
+				same++
+			}
+		}
+		if len(es) != DefaultSize || same > 1 {
+			t.Errorf("day %d: %d highlights, %d making the same point", d, len(es), same)
+		}
 	}
 }
