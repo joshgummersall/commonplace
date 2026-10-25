@@ -21,7 +21,7 @@
   <div class="actions">
     {{template "favorite" .}}
     {{if not .Detail}}
-    <a class="button" href="/h/{{.ID}}" data-action="open">{{if .Notes}}{{.Notes}} {{plural .Notes "note" "notes"}}{{else}}Add a note{{end}}</a>
+    <a class="button" href="/h/{{.ID}}" data-action="open">{{if .NoteCount}}{{.NoteCount}} {{plural .NoteCount "note" "notes"}}{{else}}Add a note{{end}}</a>
     <a class="button" href="/h/{{.ID}}#similar" data-action="similar" title="Similar highlights (s)">More like this</a>
     {{else}}
     <a class="button" href="#similar" data-action="similar" title="Similar highlights (s)">More like this ↓</a>

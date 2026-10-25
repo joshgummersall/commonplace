@@ -78,10 +78,6 @@ const bm25Weights = "1.0, 0.8, 0.4, 0.4"
 // Keyword runs a full-text search with bm25 ranking, one page at a time.
 // Ordering breaks ties on id, so pages don't overlap or skip rows.
 func Keyword(s *store.Store, q Query) ([]Result, error) {
-	limit := q.Limit
-	if limit <= 0 {
-		limit = PageSize
-	}
 	from, where, args, ranked := clauses(q)
 
 	var sql string
@@ -112,7 +108,7 @@ func Keyword(s *store.Store, q Query) ([]Result, error) {
 			LIMIT ? OFFSET ?`,
 			store.EntryColumns, from, where)
 	}
-	args = append(args, limit, max(q.Offset, 0))
+	args = append(args, q.limit(), max(q.Offset, 0))
 
 	rows, err := s.DB().Query(sql, args...)
 	if err != nil {
