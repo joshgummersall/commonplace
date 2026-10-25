@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Commonplace · your e-reader highlights, resurfaced</title>
-<meta name="description" content="A personal, self-hosted home for your e-reader highlights: import them, search them by words and by meaning, and get a daily shuffle of past highlights back.">
+<meta name="description" content="A personal, self-hosted home for your e-reader highlights: import them, search them by words and by meaning, see the themes that run across your books, and get a daily shuffle of past highlights back.">
 <link rel="icon" href="data:,">
 <style>
   /* Tokens and components follow internal/web/static/app.css. */
@@ -157,6 +157,25 @@
   }
   .count { font-size: 0.875rem; color: var(--muted); margin: 0 0 1rem; }
 
+  .theme-link { flex-basis: 100%; font-size: 0.8125rem; }
+  .theme-link a { color: var(--muted); }
+
+  /* Themes */
+
+  .areas { display: flex; flex-direction: column; gap: 0.5rem; }
+  .area { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .area-themes { border-top: 1px solid var(--rule); padding: 0.25rem 0; }
+  .theme-row { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.625rem 0.75rem; border-left: 3px solid transparent; }
+  .theme-row.is-current { border-left-color: var(--accent); background: var(--accent-soft); }
+  .area-themes .theme-row { padding-left: 2.25rem; }
+  .fold { flex: none; width: 1.5rem; color: var(--muted); text-align: center; }
+  .fold.open { transform: rotate(90deg); }
+  .theme-main { flex: 1; min-width: 0; }
+  .theme-name { font-weight: 600; }
+  .is-area .theme-name { font-family: var(--serif); font-size: 1.125rem; }
+  .theme-count { font-size: 0.8125rem; color: var(--muted); margin-left: 0.5rem; white-space: nowrap; }
+  .theme-books { margin: 0.125rem 0 0; font-size: 0.8125rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* Notes */
 
   .note { border-left: 3px solid var(--rule); padding: 0.125rem 0 0.125rem 1rem; margin-top: 1rem; }
@@ -249,7 +268,8 @@
   <section class="hero">
     <h1>Your highlights, back where you'll read them.</h1>
     <p>Highlights on an e-reader pile up in <code>My Clippings.txt</code> and are never seen again.
-      Commonplace imports them, searches them by words and by meaning, and hands a few back each day.
+      Commonplace imports them, searches them by words and by meaning, finds the themes that run
+      across your books, and hands a few back each day.
       One binary, one database file, on your own machine.</p>
     <div class="actions">
       <a class="button primary" href="#install">Install</a>
@@ -259,13 +279,14 @@
 
   <h2 class="page-title">Daily</h2>
   <p class="lede">About ten highlights a day. The ones you haven't seen in longest come up first;
-    favorites come up more often. The set stays fixed for the day.</p>
+    favorites come up more often, and no two make nearly the same point. The set stays fixed for the day.</p>
   <div class="cards">
     <article class="card is-current">
       <blockquote><p>Very little is needed to make a happy life; it is all within yourself, in your way of thinking.</p></blockquote>
       <footer class="meta">
         <cite>Meditations <span class="author">Marcus Aurelius</span></cite>
         <span>page 138, loc 2452-2456</span>
+        <span class="theme-link">Theme: <a href="#themes">What is up to us</a></span>
       </footer>
       <div class="actions">
         <span class="button on">★ Favorite</span>
@@ -316,12 +337,64 @@
     </article>
   </div>
 
+  <h2 id="themes">Themes</h2>
+  <p class="lede">What do you keep underlining? Commonplace groups highlights that say related things,
+    usually across books, into broad areas holding specific themes, and a local model names each one.
+    Open a theme to read its highlights, most typical first. Rename any theme; your names are kept.</p>
+  <div class="areas">
+    <section class="area">
+      <div class="theme-row is-area is-current">
+        <span class="fold open" aria-hidden="true">▸</span>
+        <div class="theme-main">
+          <span class="theme-name">Control and acceptance</span><span class="theme-count">41 · 9 books · 2 themes</span>
+          <p class="theme-books">Meditations · Enchiridion · Letters from a Stoic · …</p>
+        </div>
+      </div>
+      <div class="area-themes">
+        <div class="theme-row">
+          <span class="fold" aria-hidden="true"></span>
+          <div class="theme-main">
+            <span class="theme-name">What is up to us</span><span class="theme-count">14 · 5 books</span>
+            <p class="theme-books">Enchiridion · Meditations · The Consolation of Philosophy · …</p>
+          </div>
+        </div>
+        <div class="theme-row">
+          <span class="fold" aria-hidden="true"></span>
+          <div class="theme-main">
+            <span class="theme-name">Fear of what hasn't happened</span><span class="theme-count">9 · 4 books</span>
+            <p class="theme-books">Letters from a Stoic · Essays · Meditations · …</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="area">
+      <div class="theme-row is-area">
+        <span class="fold" aria-hidden="true">▸</span>
+        <div class="theme-main">
+          <span class="theme-name">Living simply</span><span class="theme-count">27 · 6 books · 2 themes</span>
+          <p class="theme-books">Walden · Essays · Letters from a Stoic · …</p>
+        </div>
+      </div>
+    </section>
+    <section class="area">
+      <div class="theme-row is-area">
+        <span class="fold" aria-hidden="true"></span>
+        <div class="theme-main">
+          <span class="theme-name">Writing plainly</span><span class="theme-count">18 · 5 books</span>
+          <p class="theme-books">The Elements of Style · Politics and the English Language · …</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <h2>What it does</h2>
   <ul class="features">
     <li><strong>Imports Kindle and CrossPoint clippings</strong>
       <span>Re-import any time. It skips what it has, keeps the final version of a highlight you extended or trimmed, and keeps your notes.</span></li>
     <li><strong>Searches by words and meaning together</strong>
       <span>Meaning comes from a local embedding model in <a href="https://ollama.com/">Ollama</a>. Without Ollama, search falls back to words.</span></li>
+    <li><strong>Finds themes across your books</strong>
+      <span>Groups related highlights by meaning, with names from a local model. Refresh them after an import; filter Search by theme.</span></li>
     <li><strong>Keeps notes, favorites, and burials</strong>
       <span>Write dated notes on any quote. Favorite what you want to see more; bury what you don't want in Daily.</span></li>
     <li><strong>Stays on your machine</strong>
@@ -330,8 +403,9 @@
 
   <h2 id="install">Install</h2>
   <pre><code>brew install --cask joshgummersall/commonplace/commonplace</code></pre>
-  <p>For search by meaning, add <a href="https://ollama.com/">Ollama</a> and the embedding model (optional):</p>
-  <pre><code>ollama pull qwen3-embedding:0.6b</code></pre>
+  <p>For search by meaning and themes, add <a href="https://ollama.com/">Ollama</a> with an embedding model and a model to name themes (optional):</p>
+  <pre><code>ollama pull qwen3-embedding:0.6b
+ollama pull qwen2.5:14b</code></pre>
 
   <h2>Use</h2>
   <pre><code>cmpl import "/Volumes/Kindle/documents/My Clippings.txt"
@@ -342,15 +416,19 @@ cmpl serve                     <span class="c"># http://127.0.0.1:8420</span></c
   <dl class="keys">
     <dt><kbd>j</kbd> <kbd>k</kbd> <kbd>gg</kbd> <kbd>G</kbd></dt><dd>Move between quotes, with counts (<kbd>5j</kbd>)</dd>
     <dt><kbd>o</kbd> / <kbd>h</kbd></dt><dd>Open a quote / go back</dd>
-    <dt><kbd>/</kbd> <kbd>gd</kbd> <kbd>gf</kbd></dt><dd>Search, Daily, favorites only</dd>
+    <dt><kbd>/</kbd> <kbd>gd</kbd> <kbd>gt</kbd> <kbd>gf</kbd></dt><dd>Search, Daily, Themes, favorites only</dd>
+    <dt><kbd>t</kbd></dt><dd>The quote's theme</dd>
+    <dt><kbd>za</kbd> <kbd>zR</kbd> <kbd>zM</kbd></dt><dd>Open or close an area, all areas</dd>
+    <dt><kbd>R</kbd></dt><dd>Refresh themes</dd>
     <dt><kbd>f</kbd> <kbd>b</kbd> <kbd>s</kbd></dt><dd>Favorite, bury, more like this</dd>
-    <dt><kbd>i</kbd> <kbd>cc</kbd> <kbd>dd</kbd></dt><dd>Write, edit, delete a note</dd>
+    <dt><kbd>i</kbd> <kbd>cc</kbd> <kbd>dd</kbd></dt><dd>Write, edit, delete a note; <kbd>cc</kbd> also renames a theme</dd>
     <dt><kbd>yy</kbd> <kbd>u</kbd></dt><dd>Copy the quote with its source, undo</dd>
   </dl>
 
   <h2>For agents</h2>
   <p class="lede">Read commands print JSON, so an agent such as Claude Code can work with your library.
-    <code>cmpl help</code> documents every command. They never change your highlights.</p>
+    <code>cmpl help</code> documents every command. They never change your highlights.
+    <code>cmpl themes</code> lists themes, and <code>--theme</code> narrows <code>list</code> and <code>search</code> to one.</p>
   <pre><code>cmpl search 'fear of failure' --limit 1
 <span class="c">{
   "total": 14,
@@ -361,6 +439,7 @@ cmpl serve                     <span class="c"># http://127.0.0.1:8420</span></c
       "text": "We suffer more often in imagination than in reality.",
       "title": "Letters from a Stoic",
       "author": "Seneca",
+      "theme": {"id": 31, "name": "Fear of what hasn't happened"},
       "why": ["similar in meaning"],
       ...
     }
