@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -48,7 +47,7 @@ To restore, stop cmpl serve and copy a snapshot to the database path.`,
 				return err
 			}
 
-			name := "commonplace-" + time.Now().UTC().Format("20060102T150405Z") + ".db"
+			name := "commonplace-" + a.now().UTC().Format("20060102T150405Z") + ".db"
 			path := filepath.Join(dir, name)
 			if _, err := os.Stat(path); err == nil {
 				return fmt.Errorf("%s already exists", path)

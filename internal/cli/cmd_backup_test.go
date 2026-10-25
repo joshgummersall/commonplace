@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/joshgummersall/commonplace/internal/store"
 )
@@ -79,5 +81,25 @@ func TestBackupKeep(t *testing.T) {
 
 	if _, _, err := runCLI(t, "--db", db, "backup", dir, "--keep", "-1"); err == nil {
 		t.Error("--keep -1 accepted")
+	}
+}
+
+func TestBackupNamesSnapshotByTime(t *testing.T) {
+	tmp := t.TempDir()
+	dir := filepath.Join(tmp, "backups")
+	var out bytes.Buffer
+	a := NewApp(nil, &out, &out)
+	a.getenv = func(string) string { return "" }
+	a.now = func() time.Time { return time.Date(2026, 10, 25, 15, 30, 0, 0, time.FixedZone("PDT", -7*3600)) }
+	if err := a.run([]string{"--db", filepath.Join(tmp, "c.db"), "backup", dir}); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "commonplace-20261025T223000Z.db")
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("snapshot not at %s: %v\n%s", want, err, out.String())
+	}
+	// A second backup in the same second must not overwrite it.
+	if err := a.run([]string{"--db", filepath.Join(tmp, "c.db"), "backup", dir}); err == nil {
+		t.Error("second backup at the same time succeeded")
 	}
 }

@@ -20,8 +20,30 @@ type Result struct {
 	Notes     int // device notes newly attached to a highlight
 	Orphans   int // notes with no highlight, stored as highlights
 	Bookmarks int // skipped
-	// Changed lists highlights whose text is new or replaced, for embedding.
-	Changed []int64
+}
+
+// outcome is what storing one highlight version did.
+type outcome int
+
+const (
+	added     outcome = iota // stored as a new highlight
+	replaced                 // updated an older stored version
+	unchanged                // this version is already stored
+	older                    // a newer version is already stored
+)
+
+// count tallies o into r.
+func (r *Result) count(o outcome) {
+	switch o {
+	case added:
+		r.Added++
+	case replaced:
+		r.Replaced++
+	case unchanged:
+		r.Unchanged++
+	case older:
+		r.Older++
+	}
 }
 
 type bookKey struct{ title, author string }
@@ -61,9 +83,11 @@ func Import(s *store.Store, clips []clippings.Clipping, now time.Time) (Result, 
 			kept, dropped := latestVersions(byBook[k])
 			r.Merged += dropped
 			for _, v := range kept {
-				if err := storeVersion(tx, v, now, &r); err != nil {
+				o, err := storeVersion(tx, v, now)
+				if err != nil {
 					return err
 				}
+				r.count(o)
 			}
 		}
 		for _, n := range notes {
@@ -82,11 +106,11 @@ func Import(s *store.Store, clips []clippings.Clipping, now time.Time) (Result, 
 // storeVersion stores the newest version of a highlight. If the database
 // holds older versions of it, the most recent is updated in place and any
 // others are merged into it.
-func storeVersion(tx *store.Tx, v version, now time.Time, r *Result) error {
+func storeVersion(tx *store.Tx, v version, now time.Time) (outcome, error) {
 	c := v.clip
 	bookID, err := tx.BookID(c.Title, c.Author)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	h := &store.Highlight{
 		BookID:        bookID,
@@ -103,34 +127,27 @@ func storeVersion(tx *store.Tx, v version, now time.Time, r *Result) error {
 
 	existing, err := tx.HighlightByHash(bookID, h.Hash)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if existing != nil {
-		r.Unchanged++
-		return nil
+		return unchanged, nil
 	}
 
 	near, err := tx.HighlightsNear(bookID, h.LocStart, h.LocEnd, h.Page)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var matches []store.Highlight
 	for _, cand := range near {
 		if sameHighlight(v.norm, normalize(cand.Text)) {
 			if newer(&cand, h) {
-				r.Older++
-				return nil
+				return older, nil
 			}
 			matches = append(matches, cand)
 		}
 	}
 	if len(matches) == 0 {
-		if err := tx.InsertHighlight(h); err != nil {
-			return err
-		}
-		r.Added++
-		r.Changed = append(r.Changed, h.ID)
-		return nil
+		return added, tx.InsertHighlight(h)
 	}
 
 	keep := &matches[0]
@@ -145,20 +162,24 @@ func storeVersion(tx *store.Tx, v version, now time.Time, r *Result) error {
 			continue
 		}
 		if err := tx.MergeInto(keep.ID, other.ID); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	if err := tx.ReplaceHighlightText(keep.ID, h); err != nil {
-		return err
-	}
-	r.Replaced++
-	r.Changed = append(r.Changed, keep.ID)
-	return nil
+	return replaced, tx.ReplaceHighlightText(keep.ID, h)
 }
 
 // newer reports whether stored highlight a is a later version than b.
+// Ties (CrossPoint has minute resolution) go to the longer text; a
+// missing date loses.
 func newer(a, b *store.Highlight) bool {
-	return newerAt(a.HighlightedAt, b.HighlightedAt, len(a.Text), len(b.Text))
+	switch {
+	case a.HighlightedAt.IsZero() != b.HighlightedAt.IsZero():
+		return b.HighlightedAt.IsZero()
+	case !a.HighlightedAt.Equal(b.HighlightedAt):
+		return a.HighlightedAt.After(b.HighlightedAt)
+	default:
+		return len(a.Text) > len(b.Text)
+	}
 }
 
 // importNote attaches a note to the highlight it was written on. Kindle
@@ -198,13 +219,14 @@ func importNote(tx *store.Tx, c clippings.Clipping, now time.Time, r *Result) er
 	// No highlight to attach to: keep the note as a highlight of its own
 	// so it isn't lost. Highlight dedupe makes this idempotent.
 	c.Kind = clippings.Highlight
-	before := r.Added
-	if err := storeVersion(tx, version{clip: c, norm: normalize(c.Text)}, now, r); err != nil {
+	o, err := storeVersion(tx, version{clip: c, norm: normalize(c.Text)}, now)
+	if err != nil {
 		return err
 	}
-	if r.Added > before {
-		r.Added--
+	if o == added {
 		r.Orphans++
+	} else {
+		r.count(o)
 	}
 	return nil
 }

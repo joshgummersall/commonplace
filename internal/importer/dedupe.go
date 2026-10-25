@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/joshgummersall/commonplace/internal/clippings"
 )
@@ -121,18 +120,4 @@ func latestVersions(vs []version) (kept []version, dropped int) {
 		kept = append(kept, v)
 	}
 	return kept, len(vs) - len(kept)
-}
-
-// newerAt reports whether version a is a later edit than b. Ties
-// (CrossPoint has minute resolution) go to the longer text; a missing date
-// loses.
-func newerAt(aAt, bAt time.Time, aLen, bLen int) bool {
-	switch {
-	case aAt.IsZero() != bAt.IsZero():
-		return bAt.IsZero()
-	case !aAt.Equal(bAt):
-		return aAt.After(bAt)
-	default:
-		return aLen > bLen
-	}
 }
