@@ -67,7 +67,7 @@ Safe to run while cmpl serve is running.`,
 			if err != nil {
 				return err
 			}
-			r, err := importer.Import(s, clips, time.Now())
+			r, err := importer.Import(s, clips, a.now())
 			if err != nil {
 				return err
 			}

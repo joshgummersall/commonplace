@@ -58,7 +58,6 @@ func count(t *testing.T, s *store.Store, q string, args ...any) int {
 
 func checkResult(t *testing.T, got, want Result) {
 	t.Helper()
-	got.Changed, want.Changed = nil, nil
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("result = %+v\nwant     %+v", got, want)
 	}
@@ -71,8 +70,8 @@ func TestImportKindleFixture(t *testing.T) {
 	// 17 entries: 2 bookmarks, a 2-version extension, a 5-version chain.
 	r := mustImport(t, s, clips)
 	checkResult(t, r, Result{Added: 10, Merged: 5, Bookmarks: 2})
-	if len(r.Changed) != 10 {
-		t.Errorf("Changed has %d ids, want 10", len(r.Changed))
+	if n := count(t, s, `SELECT count(*) FROM highlights`); n != 10 {
+		t.Errorf("stored %d highlights, want 10", n)
 	}
 	if n := count(t, s, `SELECT count(*) FROM highlights h JOIN books b ON b.id = h.book_id
 		WHERE b.title = 'Getting Things Done' AND h.loc_start = 2217`); n != 1 {
@@ -84,8 +83,8 @@ func TestImportKindleFixture(t *testing.T) {
 
 	r = mustImport(t, s, clips)
 	checkResult(t, r, Result{Unchanged: 10, Merged: 5, Bookmarks: 2})
-	if len(r.Changed) != 0 {
-		t.Errorf("re-import changed %v", r.Changed)
+	if n := count(t, s, `SELECT count(*) FROM highlights`); n != 10 {
+		t.Errorf("re-import left %d highlights, want 10", n)
 	}
 }
 
@@ -137,8 +136,8 @@ func TestImportNewerVersionUpdatesInPlace(t *testing.T) {
 	v1 := clip(10, 10, 1, "the stones remember every flood that moved them.")
 	v2 := clip(10, 11, 2, "the stones remember every flood that moved them. we drift.")
 
-	r := mustImport(t, s, []clippings.Clipping{v1})
-	id := r.Changed[0]
+	mustImport(t, s, []clippings.Clipping{v1})
+	id := idAt(t, s, 10)
 	db := s.DB()
 	if _, err := db.Exec(`UPDATE highlights SET favorite = 1 WHERE id = ?`, id); err != nil {
 		t.Fatal(err)
@@ -151,10 +150,9 @@ func TestImportNewerVersionUpdatesInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r = mustImport(t, s, []clippings.Clipping{v2})
-	checkResult(t, r, Result{Replaced: 1})
-	if len(r.Changed) != 1 || r.Changed[0] != id {
-		t.Errorf("Changed = %v, want [%d]", r.Changed, id)
+	checkResult(t, mustImport(t, s, []clippings.Clipping{v2}), Result{Replaced: 1})
+	if got := idAt(t, s, 10); got != id {
+		t.Errorf("newer version stored as %d, want %d updated in place", got, id)
 	}
 	var (
 		text string
@@ -184,8 +182,8 @@ func TestImportMergesStoredRows(t *testing.T) {
 	s := openStore(t)
 	a := clip(10, 10, 1, "the stones remember every flood that moved them.")
 	b := clip(11, 11, 2, "we forget the quiet stones that never moved at all.")
-	r := mustImport(t, s, []clippings.Clipping{a, b})
-	idA, idB := r.Changed[0], r.Changed[1]
+	mustImport(t, s, []clippings.Clipping{a, b})
+	idA, idB := idAt(t, s, 10), idAt(t, s, 11)
 
 	db := s.DB()
 	for _, q := range []string{
@@ -202,8 +200,7 @@ func TestImportMergesStoredRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r = mustImport(t, s, []clippings.Clipping{clip(10, 11, 3, a.Text+" "+b.Text)})
-	checkResult(t, r, Result{Replaced: 1})
+	checkResult(t, mustImport(t, s, []clippings.Clipping{clip(10, 11, 3, a.Text+" "+b.Text)}), Result{Replaced: 1})
 	if n := count(t, s, `SELECT count(*) FROM highlights`); n != 1 {
 		t.Fatalf("%d rows, want 1", n)
 	}
@@ -266,6 +263,16 @@ func TestImportFullExportsIdempotent(t *testing.T) {
 			t.Logf("%d highlights from %d entries", rows, len(clips))
 		})
 	}
+}
+
+// idAt returns the id of the one highlight starting at location loc.
+func idAt(t *testing.T, s *store.Store, loc int) int64 {
+	t.Helper()
+	var id int64
+	if err := s.DB().QueryRow(`SELECT id FROM highlights WHERE loc_start = ?`, loc).Scan(&id); err != nil {
+		t.Fatalf("highlight at %d: %v", loc, err)
+	}
+	return id
 }
 
 func itoa(n int64) string {
