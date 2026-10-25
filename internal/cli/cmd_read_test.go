@@ -236,3 +236,83 @@ func TestRootHelp(t *testing.T) {
 		mustContainAll(t, help, "Examples:")
 	}
 }
+
+func TestThemesCommand(t *testing.T) {
+	db := readDB(t)
+	type themesOut struct {
+		RefreshedAt *time.Time `json:"refreshed_at"`
+		Unthemed    int        `json:"unthemed"`
+		Areas       []struct {
+			ID         int64  `json:"id"`
+			Name       string `json:"name"`
+			Highlights int    `json:"highlights"`
+			Themes     []struct {
+				ID   int64  `json:"id"`
+				Name string `json:"name"`
+			} `json:"themes"`
+		} `json:"areas"`
+	}
+
+	// Before any refresh.
+	empty := decode[themesOut](t, mustRun(t, "--db", db, "themes"))
+	if empty.RefreshedAt != nil || empty.Areas == nil || len(empty.Areas) != 0 || empty.Unthemed != 10 {
+		t.Errorf("before a refresh: %+v", empty)
+	}
+	if _, _, err := runCLIWith(t, unavailable{}, "--db", db, "list", "--theme", "1"); err == nil ||
+		!strings.Contains(err.Error(), "no themes yet") {
+		t.Errorf("--theme before a refresh: %v", err)
+	}
+
+	// One area of six highlights holding one theme of four.
+	s, err := store.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	rows, _ := s.DB().Query(`SELECT id FROM highlights ORDER BY id LIMIT 6`)
+	for rows.Next() {
+		var id int64
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	area := store.Area{Theme: store.Theme{Name: "Getting work done", Members: ids}}
+	area.Themes = []store.Theme{{Name: "Weekly review", Members: ids[:4]}}
+	if err := s.ReplaceThemes([]store.Area{area}, store.ThemeRefresh{At: time.Now(), Highlights: 10}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	got := decode[themesOut](t, mustRun(t, "--db", db, "themes"))
+	if got.RefreshedAt == nil || got.Unthemed != 4 || len(got.Areas) != 1 || got.Areas[0].Highlights != 6 ||
+		len(got.Areas[0].Themes) != 1 || got.Areas[0].Themes[0].Name != "Weekly review" {
+		t.Fatalf("themes = %+v", got)
+	}
+	themeID := got.Areas[0].Themes[0].ID
+
+	// --theme takes an id or part of a name, and highlights name their theme.
+	byID := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--theme", fmt.Sprint(themeID)))
+	byName := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--theme", "weekly"))
+	if byID.Total != 4 || byName.Total != 4 {
+		t.Errorf("--theme: %d by id, %d by name, want 4", byID.Total, byName.Total)
+	}
+	for _, h := range byID.Results {
+		if h.Theme == nil || h.Theme.ID != themeID {
+			t.Errorf("highlight %d theme = %+v, want %d", h.ID, h.Theme, themeID)
+		}
+	}
+	if area := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--theme", "getting work")); area.Total != 6 {
+		t.Errorf("--theme for the area: %d, want 6", area.Total)
+	}
+
+	for _, tt := range []struct{ arg, want string }{
+		{"999", "no theme with id 999"},
+		{"astronomy", `no theme name contains "astronomy"`},
+		{"e", `"e" matches 2 themes`},
+	} {
+		if _, _, err := runCLIWith(t, unavailable{}, "--db", db, "list", "--theme", tt.arg); err == nil ||
+			!strings.Contains(err.Error(), tt.want) {
+			t.Errorf("--theme %s: %v, want %q", tt.arg, err, tt.want)
+		}
+	}
+}

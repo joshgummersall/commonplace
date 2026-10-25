@@ -27,10 +27,11 @@ mise run install   # builds bin/cmpl and copies it to ~/.local/bin
 ## Requirements
 
 - [Ollama](https://ollama.com/) with the embedding model, for search by meaning
-  and similar highlights:
+  and similar highlights, and a chat model to name themes:
 
   ```
   ollama pull qwen3-embedding:0.6b
+  ollama pull qwen2.5:14b
   ```
 
   Ollama is optional. Without it, everything works and search falls back to
@@ -57,9 +58,13 @@ cmpl serve          # http://127.0.0.1:8420
 ```
 
 - **Daily** shows about ten highlights, chosen once per day. Ones you haven't
-  seen for longest come up first; favorites come up more often.
+  seen for longest come up first; favorites come up more often; no two make
+  nearly the same point.
 - **Search** matches your words and your meaning together and says why each
-  result is listed. Filter by book or favorites.
+  result is listed. Filter by book, theme, or favorites.
+- **Themes** groups highlights that say related things, usually across books,
+  into broad areas holding specific themes, each named by the local model.
+  Refresh them from the page after importing; names you set are kept.
 - **A quote's page** holds its notes (from the device and your own, editable)
   and a *More like this* panel of related highlights, other books first.
 - **Bury** hides a quote from Daily; it stays in Search.
@@ -75,11 +80,12 @@ documents its flags and output.
 
 ```
 cmpl daily                         # today's daily highlights
-cmpl list --favorites              # newest first; --book, --limit, --offset
+cmpl list --favorites              # newest first; --book, --theme, --limit, --offset
 cmpl search 'fear of failure'      # words and meaning, as in the web app
 cmpl show 412                      # one highlight in full, with notes
 cmpl similar 412                   # highlights close in meaning
 cmpl books                         # book ids for --book
+cmpl themes                        # theme ids for --theme
 ```
 
 These commands don't change highlights, notes, favorites, or burials, and
@@ -94,9 +100,11 @@ app for the full list.
 | --- | --- |
 | `j` `k` (with counts, `5j`), `gg` `G`, `Ctrl-d` `Ctrl-u` | Move between quotes or notes |
 | `o` `Enter` / `h` `Ctrl-o` | Open quote / back |
-| `/` `gs`, `gd`, `gf` | Search, go to Daily, toggle the Favorites filter |
+| `/` `gs`, `gd`, `gt`, `gf` | Search, go to Daily, go to Themes, toggle the Favorites filter |
+| `t` | The quote's theme |
+| `za` `zo` `zc`, `zR` `zM`, `R` | Open or close an area, all areas, refresh themes |
 | `f`, `b`, `s` | Favorite, bury, more like this |
-| `i`, `cc`, `dd` | Write, edit, delete a note |
+| `i`, `cc`, `dd` | Write, edit, delete a note (`cc` renames a theme) |
 | `yy`, `u` | Copy quote with source, undo |
 
 ## Configuration
@@ -106,6 +114,7 @@ app for the full list.
 | Database | `--db` | `COMMONPLACE_DB` | `$XDG_DATA_HOME/commonplace/commonplace.db`, else `~/.local/share/commonplace/commonplace.db` |
 | Ollama address | `--ollama-url` | `OLLAMA_HOST` | `http://localhost:11434` |
 | Embedding model | `--embed-model` | | `qwen3-embedding:0.6b` |
+| Theme-naming model | `--theme-model` (serve) | | `qwen2.5:14b` |
 
 Changing the embedding model re-embeds every highlight in the background the
 next time `cmpl serve` runs.

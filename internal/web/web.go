@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/search"
 	"github.com/joshgummersall/commonplace/internal/store"
+	"github.com/joshgummersall/commonplace/internal/themes"
 )
 
 //go:embed templates static
@@ -29,10 +31,15 @@ var embedded embed.FS
 type Server struct {
 	store    *store.Store
 	searcher *search.Searcher
-	logger   *slog.Logger
-	now      func() time.Time
-	files    fs.FS
-	dev      bool
+	// embedModel names the embeddings Daily uses to vary its set; "" when
+	// there is no embedder.
+	embedModel string
+	// themes refreshes themes; nil without an embedder and a namer.
+	themes *themes.Refresher
+	logger *slog.Logger
+	now    func() time.Time
+	files  fs.FS
+	dev    bool
 
 	mu   sync.Mutex
 	tmpl *template.Template
@@ -47,8 +54,10 @@ type Options struct {
 	// Embedder enables semantic search and similar highlights. Without
 	// it, search is keyword only.
 	Embedder embedding.Embedder
-	Logger   *slog.Logger
-	Now      func() time.Time
+	// Namer names themes. With Embedder, it enables refreshing themes.
+	Namer  themes.Namer
+	Logger *slog.Logger
+	Now    func() time.Time
 }
 
 // New builds a Server. It parses templates up front so a broken template
@@ -57,6 +66,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	srv := &Server{store: s, logger: opts.Logger, now: opts.Now, files: embedded}
 	srv.searcher = &search.Searcher{Store: s}
 	if opts.Embedder != nil {
+		srv.embedModel = opts.Embedder.Model()
 		srv.searcher.Embedder = opts.Embedder
 		srv.searcher.Index = search.NewIndex(s, opts.Embedder.Model())
 	}
@@ -65,6 +75,9 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	}
 	if srv.now == nil {
 		srv.now = time.Now
+	}
+	if opts.Embedder != nil && opts.Namer != nil {
+		srv.themes = themes.NewRefresher(s, opts.Embedder.Model(), opts.Namer, srv.now, srv.logger)
 	}
 	if opts.DevDir != "" {
 		srv.files = os.DirFS(opts.DevDir)
@@ -109,6 +122,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /notes/{id}", s.handle(s.updateNote))
 	mux.HandleFunc("DELETE /notes/{id}", s.handle(s.deleteNote))
 	mux.HandleFunc("POST /notes/{id}/restore", s.handle(s.restoreNote))
+	mux.HandleFunc("GET /themes", s.handle(s.themeList))
+	mux.HandleFunc("GET /themes/refresh", s.handle(s.refreshStatus))
+	mux.HandleFunc("POST /themes/refresh", s.handle(s.refreshThemes))
+	mux.HandleFunc("GET /themes/{id}", s.handle(s.themeRow))
+	mux.HandleFunc("GET /themes/{id}/rename", s.handle(s.renameForm))
+	mux.HandleFunc("PUT /themes/{id}", s.handle(s.renameTheme))
 
 	return http.NewCrossOriginProtection().Handler(mux)
 }
@@ -219,10 +238,35 @@ var funcs = template.FuncMap{
 			return source
 		}
 	},
+	"ago": func(now, t time.Time) string {
+		d := now.Sub(t)
+		switch {
+		case d < time.Minute:
+			return "just now"
+		case d < time.Hour:
+			return humanCount(int(d.Minutes()), "minute") + " ago"
+		case d < 24*time.Hour:
+			return humanCount(int(d.Hours()), "hour") + " ago"
+		}
+		return "on " + t.Local().Format("Jan 2")
+	},
+	"percent": func(done, total int) int {
+		if total == 0 {
+			return 0
+		}
+		return 100 * done / total
+	},
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
 			return one
 		}
 		return many
 	},
+}
+
+func humanCount(n int, unit string) string {
+	if n == 1 {
+		return "1 " + unit
+	}
+	return strconv.Itoa(n) + " " + unit + "s"
 }

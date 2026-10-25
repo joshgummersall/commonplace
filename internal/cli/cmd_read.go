@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joshgummersall/commonplace/internal/daily"
 	"github.com/joshgummersall/commonplace/internal/search"
@@ -26,8 +27,9 @@ app's Daily page shows.
 The set is chosen on the first request of the day (from here or the web
 app) and stays fixed for that day. Highlights not seen for longest come
 up first, and favorites come up more often. Buried highlights are left
-out. Printing the set here does not count as reading it, so it does not
-change which highlights come up on later days.
+out, and no two in a set make nearly the same point. Printing the set
+here does not count as reading it, so it does not change which
+highlights come up on later days.
 ` + jsonHelp + `
 
 The JSON output is an array of highlights.`,
@@ -39,7 +41,7 @@ The JSON output is an array of highlights.`,
 			if err != nil {
 				return err
 			}
-			entries, err := daily.Today(s, a.now(), daily.DefaultSize)
+			entries, err := daily.Today(s, a.now(), daily.DefaultSize, a.embedder().Model())
 			if err != nil {
 				return err
 			}
@@ -62,6 +64,7 @@ The JSON output is an array of highlights.`,
 // pageFlags are the filters and paging that list and search share.
 type pageFlags struct {
 	book      string
+	theme     string
 	favorites bool
 	limit     int
 	offset    int
@@ -70,6 +73,7 @@ type pageFlags struct {
 
 func (f *pageFlags) add(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.book, "book", "", "only this book: its id, or part of its title (see cmpl books)")
+	cmd.Flags().StringVar(&f.theme, "theme", "", "only this theme or area: its id, or part of its name (see cmpl themes)")
 	cmd.Flags().BoolVar(&f.favorites, "favorites", false, "only favorites")
 	cmd.Flags().IntVar(&f.limit, "limit", defaultLimit, "highlights per page")
 	cmd.Flags().IntVar(&f.offset, "offset", 0, "highlights to skip, to fetch later pages")
@@ -88,8 +92,9 @@ func (a *App) newListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List highlights, newest first",
-		Long: `List highlights, newest first, optionally only one book's or only
-favorites. Buried highlights are included and marked.
+		Long: `List highlights, newest first, optionally only one book's, one theme's,
+or only favorites. Buried highlights are included and marked. With
+--theme, the theme's most typical highlights come first instead.
 
 Use list to browse, for example all of one book's highlights; use search
 to find highlights about something.
@@ -98,7 +103,8 @@ to find highlights about something.
 		Example: `  cmpl list
   cmpl list --favorites --notes --limit 50
   cmpl list --book meditations
-  cmpl list --book 7 --offset 20`,
+  cmpl list --book 7 --offset 20
+  cmpl list --theme 31`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runPage(cmd, "", f)
@@ -161,6 +167,11 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 			return err
 		}
 	}
+	if f.theme != "" {
+		if q.ThemeID, err = resolveTheme(s, f.theme); err != nil {
+			return err
+		}
+	}
 	sr := &search.Searcher{Store: s}
 	if text != "" {
 		e := a.embedder()
@@ -195,6 +206,58 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 		out.NextOffset = &next
 	}
 	return writeJSON(a.stdout, out)
+}
+
+// resolveTheme turns --theme into a theme id: a number is an id; anything
+// else must match exactly one theme or area name, ignoring case, either
+// whole or as a part.
+func resolveTheme(s *store.Store, arg string) (int64, error) {
+	areas, err := s.ThemeOutline()
+	if err != nil {
+		return 0, err
+	}
+	var all []store.ThemeSummary
+	for _, a := range areas {
+		all = append(all, a)
+		all = append(all, a.Themes...)
+	}
+	if len(all) == 0 {
+		return 0, fmt.Errorf("there are no themes yet; refresh them on the web app's Themes page")
+	}
+	if id, err := strconv.ParseInt(arg, 10, 64); err == nil {
+		for _, t := range all {
+			if t.ID == id {
+				return id, nil
+			}
+		}
+		return 0, fmt.Errorf("no theme with id %d; run cmpl themes to list them", id)
+	}
+	want := strings.ToLower(arg)
+	var matches []store.ThemeSummary
+	for _, t := range all {
+		name := strings.ToLower(t.Name)
+		if name == want {
+			return t.ID, nil
+		}
+		if strings.Contains(name, want) {
+			matches = append(matches, t)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return 0, fmt.Errorf("no theme name contains %q; run cmpl themes to list them", arg)
+	case 1:
+		return matches[0].ID, nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%q matches %d themes; pass an id instead:", arg, len(matches))
+	for _, m := range matches[:min(len(matches), 10)] {
+		fmt.Fprintf(&b, "\n  %d  %s", m.ID, m.Name)
+	}
+	if len(matches) > 10 {
+		fmt.Fprintf(&b, "\n  and %d more", len(matches)-10)
+	}
+	return 0, fmt.Errorf("%s", b.String())
 }
 
 // resolveBook turns --book into a book id: a number is an id; anything
@@ -413,6 +476,75 @@ The JSON output is an array:
 			out := make([]bookJSON, len(books))
 			for i, b := range books {
 				out[i] = bookJSON{b.ID, b.Title, b.Author, b.Count}
+			}
+			return writeJSON(a.stdout, out)
+		},
+	}
+	return cmd
+}
+
+func (a *App) newThemesCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "themes",
+		Short: "List themes: groups of highlights that say related things",
+		Long: `List themes, the web app's Themes page: groups of highlights that say
+related things, usually across books. Broad areas each hold specific
+themes. Not every highlight is in one.
+
+Themes are found and named on the web app's Themes page (Refresh
+themes), not here, so they cover highlights up to the last refresh.
+Pass an id (or part of a name) to --theme on list and search.
+
+The JSON output is an object:
+
+  {"refreshed_at": "2026-10-25T09:00:00Z", "unthemed": 412,
+   "areas": [{"id": 3, "name": "...", "highlights": 129, "books": 37,
+              "themes": [{"id": 31, "name": "...", "highlights": 44, "books": 14}]}]}
+
+Areas come largest first, and so do the themes in each. refreshed_at is
+null and areas is [] before the first refresh. unthemed counts
+highlights in no area.`,
+		Example: `  cmpl themes
+  cmpl list --theme 31`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s, err := a.openStore()
+			if err != nil {
+				return err
+			}
+			tree, err := s.ThemeTree()
+			if err != nil {
+				return err
+			}
+			type themeJSON struct {
+				ID         int64       `json:"id"`
+				Name       string      `json:"name"`
+				Highlights int         `json:"highlights"`
+				Books      int         `json:"books"`
+				Themes     []themeJSON `json:"themes,omitempty"`
+			}
+			out := struct {
+				RefreshedAt *time.Time  `json:"refreshed_at"`
+				Unthemed    int         `json:"unthemed"`
+				Areas       []themeJSON `json:"areas"`
+			}{Areas: []themeJSON{}}
+			last, ok, err := s.LastThemeRefresh()
+			if err != nil {
+				return err
+			}
+			if ok {
+				at := last.At.UTC()
+				out.RefreshedAt = &at
+			}
+			if out.Unthemed, err = s.UnthemedCount(); err != nil {
+				return err
+			}
+			for _, a := range tree {
+				area := themeJSON{ID: a.ID, Name: a.Name, Highlights: a.Count, Books: a.Books}
+				for _, t := range a.Themes {
+					area.Themes = append(area.Themes, themeJSON{ID: t.ID, Name: t.Name, Highlights: t.Count, Books: t.Books})
+				}
+				out.Areas = append(out.Areas, area)
 			}
 			return writeJSON(a.stdout, out)
 		},

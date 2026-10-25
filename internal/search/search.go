@@ -136,8 +136,16 @@ func (sr *Searcher) nearest(q Query, qvec []float32) ([]int64, error) {
 			return nil, err
 		}
 	}
+	var inTheme map[int64]bool
+	if q.ThemeID != 0 {
+		var err error
+		if inTheme, err = sr.Store.ThemeMemberIDs(q.ThemeID); err != nil {
+			return nil, err
+		}
+	}
 	hits, err := sr.Index.Nearest(qvec, SemanticK, func(v store.Vector) bool {
-		return (q.BookID == 0 || v.BookID == q.BookID) && (!q.Favorites || favorites[v.HighlightID])
+		return (q.BookID == 0 || v.BookID == q.BookID) && (!q.Favorites || favorites[v.HighlightID]) &&
+			(q.ThemeID == 0 || inTheme[v.HighlightID])
 	})
 	if err != nil {
 		return nil, err
