@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commonplace · your e-reader highlights, resurfaced</title>
+<meta name="description" content="A personal, self-hosted home for your e-reader highlights: import them, search them by words and by meaning, and get a daily shuffle of past highlights back.">
+<link rel="icon" href="data:,">
+<style>
+  /* Tokens and components follow internal/web/static/app.css. */
+  :root {
+    --bg: #fbfaf7;
+    --surface: #ffffff;
+    --text: #1f1d1a;
+    --muted: #6b665e;
+    --rule: #e6e2da;
+    --accent: #8a4b14;
+    --accent-soft: #f6ead9;
+    --mark: #fde9a8;
+    --focus: #2f6fdb;
+
+    --serif: "Iowan Old Style", "Charter", "Palatino Linotype", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --measure: 40rem;
+    color-scheme: light dark;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171614;
+      --surface: #1f1d1a;
+      --text: #ebe7e0;
+      --muted: #a39d93;
+      --rule: #34312c;
+      --accent: #e0a466;
+      --accent-soft: #3a2c1d;
+      --mark: #5b4a12;
+      --focus: #7aa7ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 var(--sans);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  header.site, main, footer.site {
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: 0 16px;
+  }
+
+  header.site {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
+
+  .brand { font-family: var(--serif); font-size: 1.25rem; color: var(--text); text-decoration: none; }
+  nav { display: flex; gap: 1.25rem; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--text); }
+
+  main { padding-bottom: 3rem; }
+
+  .hero { margin: 2.5rem 0 2.5rem; }
+  .hero h1 {
+    font: 400 2.25rem/1.2 var(--serif);
+    letter-spacing: -0.01em;
+    margin: 0 0 1rem;
+  }
+  .hero p { font-size: 1.0625rem; color: var(--muted); margin: 0 0 1.5rem; }
+
+  .page-title, h2 {
+    font: 600 0.8rem/1.2 var(--sans);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 3rem 0 1.25rem;
+  }
+
+  p { margin: 0 0 1rem; }
+  .lede { color: var(--muted); }
+
+  /* Cards */
+
+  .cards { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 1.25rem 1.25rem 1rem;
+  }
+  .card.is-current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+  blockquote { margin: 0; font-family: var(--serif); font-size: 1.1875rem; line-height: 1.6; }
+  blockquote p { margin: 0; }
+
+  mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    color: var(--muted);
+  }
+  cite { font-style: normal; font-weight: 600; color: var(--text); }
+  .author { white-space: nowrap; font-weight: 400; color: var(--muted); }
+  .author::before { content: "· "; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+
+  .button {
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.375rem 0.75rem;
+    min-height: 2.25rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+  }
+  a.button:hover { border-color: var(--muted); }
+  .button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  .button.on { color: var(--accent); border-color: var(--accent); }
+  span.button { cursor: default; }
+
+  .why { font-size: 0.6875rem; color: var(--muted); opacity: 0.75; margin: 0.75rem 0 0; }
+
+  .search-box {
+    font-size: 1.0625rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+  }
+  .count { font-size: 0.875rem; color: var(--muted); margin: 0 0 1rem; }
+
+  /* Notes */
+
+  .note { border-left: 3px solid var(--rule); padding: 0.125rem 0 0.125rem 1rem; margin-top: 1rem; }
+  .note header { font-size: 0.8125rem; color: var(--muted); display: flex; gap: 0.5rem; }
+  .note .source { font-weight: 600; color: var(--text); }
+  .note p { margin: 0.25rem 0 0; }
+
+  /* Features */
+
+  .features { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+  .features li { border-left: 3px solid var(--rule); padding: 0.125rem 0 0.125rem 1rem; }
+  .features strong { display: block; font-weight: 600; }
+  .features span { color: var(--muted); font-size: 0.9375rem; }
+
+  /* Code */
+
+  pre, code { font-family: var(--mono); }
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    margin: 0 0 1rem;
+  }
+  :not(pre) > code {
+    font-size: 0.875em;
+    background: var(--accent-soft);
+    border-radius: 4px;
+    padding: 0.05rem 0.3rem;
+  }
+  .c { color: var(--muted); }
+
+  /* Keys */
+
+  kbd {
+    font: 0.75rem/1 var(--sans);
+    border: 1px solid var(--rule);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0.125rem 0.375rem;
+    background: var(--surface);
+  }
+  .keys {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1.25rem;
+    margin: 0;
+    font-size: 0.9375rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+  }
+  .keys dt { white-space: nowrap; }
+  .keys dd { margin: 0; color: var(--muted); }
+
+  footer.site {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    padding-bottom: 3rem;
+    font-size: 0.875rem;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  footer.site a { color: var(--muted); }
+
+  @media (max-width: 30rem) {
+    .hero h1 { font-size: 1.75rem; }
+    .keys { grid-template-columns: 1fr; gap: 0.125rem; }
+    .keys dd { margin-bottom: 0.5rem; }
+  }
+</style>
+</head>
+<body>
+<header class="site">
+  <a class="brand" href="/">Commonplace</a>
+  <nav aria-label="Main">
+    <a href="#install">Install</a>
+    <a href="https://github.com/joshgummersall/commonplace">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>Your highlights, back where you'll read them.</h1>
+    <p>Highlights on an e-reader pile up in <code>My Clippings.txt</code> and are never seen again.
+      Commonplace imports them, searches them by words and by meaning, and hands a few back each day.
+      One binary, one database file, on your own machine.</p>
+    <div class="actions">
+      <a class="button primary" href="#install">Install</a>
+      <a class="button" href="https://github.com/joshgummersall/commonplace#readme">Read the docs</a>
+    </div>
+  </section>
+
+  <h2 class="page-title">Daily</h2>
+  <p class="lede">About ten highlights a day. The ones you haven't seen in longest come up first;
+    favorites come up more often. The set stays fixed for the day.</p>
+  <div class="cards">
+    <article class="card is-current">
+      <blockquote><p>Very little is needed to make a happy life; it is all within yourself, in your way of thinking.</p></blockquote>
+      <footer class="meta">
+        <cite>Meditations <span class="author">Marcus Aurelius</span></cite>
+        <span>page 138, loc 2452-2456</span>
+      </footer>
+      <div class="actions">
+        <span class="button on">★ Favorite</span>
+        <span class="button">Add a note</span>
+        <span class="button">More like this</span>
+        <span class="button">Bury</span>
+      </div>
+    </article>
+    <article class="card">
+      <blockquote><p>I went to the woods because I wished to live deliberately, to front only the essential facts of life, and see if I could not learn what it had to teach.</p></blockquote>
+      <footer class="meta">
+        <cite>Walden <span class="author">Henry David Thoreau</span></cite>
+        <span>loc 1207-1209</span>
+      </footer>
+      <div class="actions">
+        <span class="button">☆ Favorite</span>
+        <span class="button">1 note</span>
+        <span class="button">More like this</span>
+        <span class="button">Bury</span>
+      </div>
+      <div class="note">
+        <header><span class="source">user</span><span>Oct 24, 2026</span></header>
+        <p>Read this again before deciding about the move.</p>
+      </div>
+    </article>
+  </div>
+
+  <h2>Search</h2>
+  <p class="lede">Find a passage by the words in it, or by the idea. Each result says why it matched.</p>
+  <div class="search-box">letting go of control</div>
+  <p class="count">No exact word matches · 2 similar in meaning</p>
+  <div class="cards">
+    <article class="card">
+      <blockquote><p>Some things are within our power, while others are not. Within our power are opinion, motivation, desire, aversion, and, in a word, whatever is of our own doing.</p></blockquote>
+      <footer class="meta">
+        <cite>Enchiridion <span class="author">Epictetus</span></cite>
+        <span>loc 12-15</span>
+      </footer>
+      <p class="why">similar in meaning</p>
+    </article>
+    <article class="card">
+      <blockquote><p>The happiness of your life depends upon the quality of your thoughts: therefore, guard accordingly, and take care that you entertain no notions unsuitable to virtue.</p></blockquote>
+      <footer class="meta">
+        <cite>Meditations <span class="author">Marcus Aurelius</span></cite>
+        <span>loc 801-803</span>
+      </footer>
+      <p class="why">similar in meaning</p>
+    </article>
+  </div>
+
+  <h2>What it does</h2>
+  <ul class="features">
+    <li><strong>Imports Kindle and CrossPoint clippings</strong>
+      <span>Re-import any time. It skips what it has, keeps the final version of a highlight you extended or trimmed, and keeps your notes.</span></li>
+    <li><strong>Searches by words and meaning together</strong>
+      <span>Meaning comes from a local embedding model in <a href="https://ollama.com/">Ollama</a>. Without Ollama, search falls back to words.</span></li>
+    <li><strong>Keeps notes, favorites, and burials</strong>
+      <span>Write dated notes on any quote. Favorite what you want to see more; bury what you don't want in Daily.</span></li>
+    <li><strong>Stays on your machine</strong>
+      <span>No accounts and no sync service. The web app listens on localhost, and <code>cmpl backup</code> writes snapshots safe for iCloud Drive.</span></li>
+  </ul>
+
+  <h2 id="install">Install</h2>
+  <pre><code>brew install --cask joshgummersall/commonplace/commonplace</code></pre>
+  <p>For search by meaning, add <a href="https://ollama.com/">Ollama</a> and the embedding model (optional):</p>
+  <pre><code>ollama pull qwen3-embedding:0.6b</code></pre>
+
+  <h2>Use</h2>
+  <pre><code>cmpl import "/Volumes/Kindle/documents/My Clippings.txt"
+cmpl serve                     <span class="c"># http://127.0.0.1:8420</span></code></pre>
+
+  <h2>Keys</h2>
+  <p class="lede">The web app is built for the keyboard, with vim-style keys. Press <kbd>?</kbd> in the app for the full list.</p>
+  <dl class="keys">
+    <dt><kbd>j</kbd> <kbd>k</kbd> <kbd>gg</kbd> <kbd>G</kbd></dt><dd>Move between quotes, with counts (<kbd>5j</kbd>)</dd>
+    <dt><kbd>o</kbd> / <kbd>h</kbd></dt><dd>Open a quote / go back</dd>
+    <dt><kbd>/</kbd> <kbd>gd</kbd> <kbd>gf</kbd></dt><dd>Search, Daily, favorites only</dd>
+    <dt><kbd>f</kbd> <kbd>b</kbd> <kbd>s</kbd></dt><dd>Favorite, bury, more like this</dd>
+    <dt><kbd>i</kbd> <kbd>cc</kbd> <kbd>dd</kbd></dt><dd>Write, edit, delete a note</dd>
+    <dt><kbd>yy</kbd> <kbd>u</kbd></dt><dd>Copy the quote with its source, undo</dd>
+  </dl>
+
+  <h2>For agents</h2>
+  <p class="lede">Read commands print JSON, so an agent such as Claude Code can work with your library.
+    <code>cmpl help</code> documents every command. They never change your highlights.</p>
+  <pre><code>cmpl search 'fear of failure' --limit 1
+<span class="c">{
+  "total": 14,
+  "next_offset": 1,
+  "results": [
+    {
+      "id": 412,
+      "text": "We suffer more often in imagination than in reality.",
+      "title": "Letters from a Stoic",
+      "author": "Seneca",
+      "why": ["similar in meaning"],
+      ...
+    }
+  ]
+}</span></code></pre>
+</main>
+
+<footer class="site">
+  <span>Commonplace</span>
+  <a href="https://github.com/joshgummersall/commonplace">github.com/joshgummersall/commonplace</a>
+</footer>
+</body>
+</html>
