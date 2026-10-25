@@ -67,11 +67,6 @@ func Today(s *store.Store, now time.Time, size int, model string) ([]store.Entry
 	return slices.DeleteFunc(entries, func(e store.Entry) bool { return e.Buried }), nil
 }
 
-// MarkSeen records that highlights were shown.
-func MarkSeen(s *store.Store, ids []int64, now time.Time) error {
-	return s.MarkSeen(ids, now)
-}
-
 // choose samples the day's highlights and stores them. If a concurrent
 // first request stored its set first, that set is returned instead.
 func choose(s *store.Store, day string, now time.Time, size int, model string) ([]int64, error) {
