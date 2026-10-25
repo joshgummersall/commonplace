@@ -45,7 +45,7 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
 
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-header.site, main {
+header.site, main, footer.site {
   max-width: var(--measure);
   margin: 0 auto;
   padding: 0 16px;
@@ -72,6 +72,9 @@ nav a { color: var(--muted); text-decoration: none; }
 nav a[aria-current="page"] { color: var(--text); border-bottom: 2px solid var(--accent); }
 
 main { padding-bottom: 4rem; }
+
+footer.site { padding-bottom: 2rem; font-size: 0.8125rem; }
+footer.site a { color: var(--muted); }
 
 .page-title {
   font: 600 0.8rem/1.2 var(--sans);
