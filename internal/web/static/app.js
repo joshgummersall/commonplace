@@ -337,12 +337,13 @@
   });
 
   // completionKey handles a key in a tag input while matches are shown,
-  // and reports whether it did.
+  // and reports whether it did. Enter picks a match rather than saving;
+  // once nothing is offered, it saves.
   function completionKey(e, input) {
     const list = openCompletions(input);
     if (!list) return false;
     const key = keyName(e);
-    if (key === "Tab") {
+    if (key === "Tab" || key === "Enter") {
       acceptTag(input, list.querySelector('[aria-selected="true"]').textContent);
     } else if (key === "ArrowDown" || key === "C-n") {
       moveCompletion(list, 1);
