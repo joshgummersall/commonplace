@@ -16,8 +16,8 @@
   <footer class="meta">
     <cite data-yank-cite><a href="/search?book={{.BookID}}">{{.BookTitle}}</a>{{with .BookAuthor}} <span class="author">{{.}}</span>{{end}}</cite>
     {{with .Location}}<span class="loc">{{.}}</span>{{end}}
-    {{with .Theme}}<span class="theme-link">Theme: <a href="/search?theme={{.ID}}" data-action="theme" title="Highlights in this theme (t)">{{.Name}}</a></span>{{end}}
   </footer>
+  {{template "card-tags" .}}
   <div class="actions">
     {{template "favorite" .}}
     {{if not .Detail}}
@@ -43,4 +43,33 @@
 {{define "favorite"}}
 <button type="button" class="favorite" data-action="favorite" aria-pressed="{{.Favorite}}" title="Favorite (f)"
   hx-post="/h/{{.ID}}/favorite" hx-swap="outerHTML">{{if .Favorite}}★ Favorite{{else}}☆ Favorite{{end}}</button>
+{{end}}
+
+{{/* A quote's tags. Suggested ones look muted until confirmed. */}}
+{{define "card-tags"}}
+<div class="card-tags" id="tags-{{.ID}}">
+  {{range .Tags}}<a class="tag{{if .Suggested}} is-suggested{{end}}" href="/search?tag={{.ID}}"{{if .Suggested}} title="Suggested; T confirms"{{end}}>{{.Name}}</a>{{end}}
+  <button type="button" class="link" data-action="tag" title="Edit tags (t)"
+    hx-get="/h/{{.ID}}/tags/edit" hx-target="#tags-{{.ID}}" hx-swap="outerHTML">{{if .Tags}}Edit tags{{else}}Add tags{{end}}</button>
+  {{if suggested .Tags}}
+  <button type="button" class="link" data-action="confirm-tags" title="Confirm suggested tags (T)"
+    hx-post="/h/{{.ID}}/tags/confirm" hx-target="#tags-{{.ID}}" hx-swap="outerHTML">Confirm</button>
+  {{end}}
+</div>
+{{end}}
+
+{{define "tags-edit"}}
+<form class="card-tags tags-edit" id="tags-{{.ID}}" data-tag-names="{{.Names}}"
+  hx-put="/h/{{.ID}}/tags" hx-target="this" hx-swap="outerHTML">
+  <input name="tags" value="{{.Draft}}" aria-label="Tags, separated by commas" placeholder="Tags, separated by commas"
+    autocomplete="off" autofocus data-complete-tags>
+  {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+  <div class="form-actions">
+    <button type="submit">Save</button>
+    {{/* Hidden: Esc clicks it. */}}
+    <button type="button" data-action="cancel" hidden
+      hx-get="/h/{{.ID}}/tags" hx-target="#tags-{{.ID}}" hx-swap="outerHTML">Cancel</button>
+    <span class="hint"><kbd>Tab</kbd> picks a match, <kbd>Ctrl-n</kbd> <kbd>Ctrl-p</kbd> move · <kbd>↩</kbd> saves and confirms · <kbd>Esc</kbd> cancels</span>
+  </div>
+</form>
 {{end}}

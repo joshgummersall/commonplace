@@ -1,13 +1,12 @@
-// Package themes groups highlights that say related things, usually
-// across books, into named themes nested in broader areas.
+// Package autotag suggests tags. Seed groups the highlights of a library
+// with no tags yet and names each group as a tag; Suggest then tags new
+// highlights by what their nearest neighbors are tagged.
 //
 // Grouping is average-linkage agglomerative clustering on cosine distance,
-// cut at two heights of the same tree: a low cut gives specific themes,
-// a high one broad areas, and every theme falls inside one area. Unlike
-// k-means it needs no cluster count and leaves highlights that fit no
-// group out, and it gives the same answer every run. A local LLM names
-// each group, and can decline a group that shares no idea.
-package themes
+// cut at one height. Unlike k-means it needs no cluster count and leaves
+// highlights that fit no group out, and it gives the same answer every
+// run. A local LLM names each group.
+package autotag
 
 import (
 	"cmp"
@@ -17,15 +16,14 @@ import (
 	"github.com/joshgummersall/commonplace/internal/embedding"
 )
 
-// Cut heights come from the data rather than fixed cosine values, which
-// shift with the model and the library: each highlight's distance to its
-// neighborK-th nearest neighbor, at the given quantile. On the library
-// they were tuned on (1,546 highlights, qwen3-embedding:0.6b) these are
-// about 0.50 and 0.60, the levels a blind review of sample themes chose.
+// The cut height comes from the data rather than a fixed cosine value,
+// which shifts with the model and the library: each highlight's distance
+// to its neighborK-th nearest neighbor, at cutQuantile. On the library it
+// was tuned on (1,546 highlights, qwen3-embedding:0.6b) this is about
+// 0.60, the level a blind review of sample groups chose.
 const (
-	neighborK     = 20
-	themeQuantile = 0.40
-	areaQuantile  = 0.88
+	neighborK   = 20
+	cutQuantile = 0.88
 )
 
 // merge joins clusters a and b (each named by one of its points) at
@@ -35,10 +33,10 @@ type merge struct {
 	height float32
 }
 
-// tree clusters unit vectors and returns the merges and the cut heights
-// for themes and areas. It holds an n×n distance matrix, so it needs
-// 4n² bytes of memory (see MaxHighlights).
-func tree(vecs [][]float32) (merges []merge, themeCut, areaCut float32) {
+// tree clusters unit vectors and returns the merges and the cut height.
+// It holds an n×n distance matrix, so it needs 4n² bytes of memory (see
+// MaxHighlights).
+func tree(vecs [][]float32) (merges []merge, height float32) {
 	n := len(vecs)
 	d := make([][]float32, n)
 	for i := range d {
@@ -50,12 +48,12 @@ func tree(vecs [][]float32) (merges []merge, themeCut, areaCut float32) {
 			d[i][j], d[j][i] = x, x
 		}
 	}
-	themeCut, areaCut = cutHeights(d)
-	return linkage(d), themeCut, areaCut
+	height = cutHeight(d)
+	return linkage(d), height
 }
 
-// cutHeights reads the cut heights off the neighbor distances.
-func cutHeights(d [][]float32) (themeCut, areaCut float32) {
+// cutHeight reads the cut height off the neighbor distances.
+func cutHeight(d [][]float32) float32 {
 	n := len(d)
 	k := min(neighborK, n-1)
 	kth := make([]float32, n)
@@ -66,8 +64,7 @@ func cutHeights(d [][]float32) (themeCut, areaCut float32) {
 		kth[i] = row[k] // row[0] is the point itself
 	}
 	slices.Sort(kth)
-	q := func(p float64) float32 { return kth[int(p*float64(n-1))] }
-	return q(themeQuantile), q(areaQuantile)
+	return kth[int(cutQuantile*float64(n-1))]
 }
 
 // linkage runs average-linkage clustering with the nearest-neighbor chain
@@ -117,8 +114,7 @@ func linkage(d [][]float32) []merge {
 }
 
 // cut returns the clusters formed by merges at or below height, as lists
-// of point indexes. Average linkage never merges lower than an earlier
-// merge, so lower cuts nest inside higher ones.
+// of point indexes.
 func cut(n int, merges []merge, height float32) [][]int {
 	parent := make([]int, n)
 	for i := range parent {

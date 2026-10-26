@@ -13,23 +13,23 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joshgummersall/commonplace/internal/autotag"
 	"github.com/joshgummersall/commonplace/internal/embedding"
-	"github.com/joshgummersall/commonplace/internal/themes"
 	"github.com/joshgummersall/commonplace/internal/web"
 	"github.com/spf13/cobra"
 )
 
 func (a *App) newServeCommand() *cobra.Command {
 	var (
-		host       string
-		port       int
-		devDir     string
-		themeModel string
+		host      string
+		port      int
+		devDir    string
+		nameModel string
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the web app",
-		Long: `Serve the Commonplace web app: the daily shuffle, search, themes,
+		Long: `Serve the Commonplace web app: the daily shuffle, search, tags,
 favorites, burying, and notes. It runs until interrupted, printing its address
 ("Serving Commonplace at http://127.0.0.1:8420") and then request errors.
 
@@ -40,9 +40,10 @@ Highlights missing embeddings (new imports, or all of them after
 --embed-model changes) are embedded in the background, retrying every
 minute while Ollama is unreachable.
 
-Themes are found on demand from the Themes page: it groups embedded
-highlights by meaning and asks --theme-model, also served by Ollama, to
-name each group.
+Once highlights are embedded, each one with no tag yet is suggested the
+tags most of its nearest neighbors carry. A library with no tags can get
+a first set from the Tags page: it groups embedded highlights by meaning
+and asks --name-model, also served by Ollama, to name each group.
 
 It listens on localhost by default. The app has no login, so only use
 --host 0.0.0.0 (for example, to read on your phone) on a network you trust.`,
@@ -60,7 +61,7 @@ It listens on localhost by default. The app has no login, so only use
 				DevDir:   devDir,
 				Logger:   logger,
 				Embedder: e,
-				Namer:    themes.NewOllamaNamer(a.ollamaBase(), themeModel),
+				Namer:    autotag.NewOllamaNamer(a.ollamaBase(), nameModel),
 			})
 			if err != nil {
 				return err
@@ -79,7 +80,14 @@ It listens on localhost by default. The app has no login, so only use
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			go embedding.KeepFresh(ctx, s, e, time.Minute, logger)
+			go embedding.KeepFresh(ctx, s, e, time.Minute, logger, func() {
+				n, err := autotag.Suggest(s, e.Model())
+				if err != nil {
+					logger.Error("suggesting tags failed", "err", err)
+				} else if n > 0 {
+					logger.Info("suggested tags", "count", n)
+				}
+			})
 			errc := make(chan error, 1)
 			go func() { errc <- httpSrv.Serve(ln) }()
 			select {
@@ -97,7 +105,7 @@ It listens on localhost by default. The app has no login, so only use
 	}
 	cmd.Flags().StringVar(&host, "host", "127.0.0.1", "address to listen on")
 	cmd.Flags().IntVar(&port, "port", 8420, "port to listen on")
-	cmd.Flags().StringVar(&themeModel, "theme-model", themes.DefaultNameModel, "Ollama model that names themes")
+	cmd.Flags().StringVar(&nameModel, "name-model", autotag.DefaultNameModel, "Ollama model that names suggested tags")
 	cmd.Flags().StringVar(&devDir, "dev", "", "serve templates and static files from this directory, reloading templates per request")
 	cmd.Flags().MarkHidden("dev")
 	return cmd

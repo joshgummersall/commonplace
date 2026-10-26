@@ -86,7 +86,7 @@ func (s *Store) Vectors(model string) ([]Vector, error) {
 
 // embedded loads every highlight embedded by model, by id, with its text
 // only when withText is set.
-func (s *Store) embedded(model string, withText bool) ([]ThemeInput, error) {
+func (s *Store) embedded(model string, withText bool) ([]EmbeddedText, error) {
 	text := "''"
 	if withText {
 		text = "h.text"
@@ -98,10 +98,10 @@ func (s *Store) embedded(model string, withText bool) ([]ThemeInput, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []ThemeInput
+	var out []EmbeddedText
 	for rows.Next() {
 		var (
-			in   ThemeInput
+			in   EmbeddedText
 			blob []byte
 		)
 		if err := rows.Scan(&in.ID, &in.BookID, &in.Text, &blob); err != nil {

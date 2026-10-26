@@ -1,5 +1,5 @@
 // Package ollama talks to a local Ollama server, which serves both the
-// embedding model and the model that names themes.
+// embedding model and the model that names suggested tags.
 package ollama
 
 import (
@@ -20,7 +20,7 @@ const DefaultURL = "http://localhost:11434"
 
 // ErrUnavailable means a model could not be reached: Ollama is not
 // running, the host is wrong, or the model is not pulled. Callers degrade
-// (keyword search, no theme refresh) rather than failing.
+// (keyword search, no tag suggestions) rather than failing.
 var ErrUnavailable = errors.New("model unavailable")
 
 // maxResponse caps how much of a reply is read. A batch of embeddings is

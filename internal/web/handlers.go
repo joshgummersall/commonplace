@@ -90,10 +90,10 @@ type searchPage struct {
 	page
 	Query search.Query
 	Books []store.BookCount
-	// Theme describes the theme filter, when one is set.
-	Theme *themeFilter
-	// Areas fills the theme menu: areas in order, with their themes.
-	Areas   []store.ThemeSummary
+	// Tag describes the tag filter, when one is set.
+	Tag *store.Tag
+	// Tags fills the tag menu.
+	Tags    []store.Tag
 	Results []card
 	// Total counts every match. When meaning-based matching ran, Words
 	// and Meaning split it into word matches and meaning-only matches.
@@ -117,12 +117,12 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		}
 		q.BookID = id
 	}
-	if t := r.FormValue("theme"); t != "" {
+	if t := r.FormValue("tag"); t != "" {
 		id, err := strconv.ParseInt(t, 10, 64)
 		if err != nil {
-			return badRequest("bad theme id %q", t)
+			return badRequest("bad tag id %q", t)
 		}
-		q.ThemeID = id
+		q.TagID = id
 	}
 	// Later pages are only fetched by the Load more button; a full page
 	// load always starts from the top.
@@ -141,13 +141,13 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	if err := s.searchResults(r, &data); err != nil {
 		return err
 	}
-	// The theme header sits above the results, so it changes with them.
-	if q.ThemeID != 0 && q.Offset == 0 {
-		var err error
-		if data.Theme, err = s.themeFilter(q.ThemeID); err != nil {
+	// The tag header sits above the results, so it changes with them.
+	if q.TagID != 0 && q.Offset == 0 {
+		t, err := s.store.Tag(q.TagID)
+		if err != nil {
 			return err
 		}
-		data.Title = data.Theme.Name
+		data.Tag, data.Title = &t, t.Name
 	}
 	switch {
 	case isHTMX(r) && q.Offset > 0:
@@ -159,7 +159,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	if data.Books, err = s.store.Books(); err != nil {
 		return err
 	}
-	if data.Areas, err = s.store.ThemeTree(); err != nil {
+	if data.Tags, err = s.store.Tags(); err != nil {
 		return err
 	}
 	return s.render(w, "search.html", data)
@@ -184,8 +184,8 @@ func (s *Server) searchResults(r *http.Request, data *searchPage) error {
 		if q.BookID != 0 {
 			next.Set("book", strconv.FormatInt(q.BookID, 10))
 		}
-		if q.ThemeID != 0 {
-			next.Set("theme", strconv.FormatInt(q.ThemeID, 10))
+		if q.TagID != 0 {
+			next.Set("tag", strconv.FormatInt(q.TagID, 10))
 		}
 		if q.Favorites {
 			next.Set("fav", "1")

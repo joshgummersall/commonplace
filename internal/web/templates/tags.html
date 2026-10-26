@@ -1,0 +1,115 @@
+{{template "head" .}}
+<h1 class="page-title">Tags</h1>
+{{if or (not .Tags) .Seed.Running (not .Seed.Finished.IsZero)}}{{template "seed-status" .Seed}}{{end}}
+{{if .Tags}}
+<p class="count">{{len .Tags}} {{plural (len .Tags) "tag" "tags"}}.{{if .Unconfirmed}} {{.Unconfirmed}} {{plural .Unconfirmed "highlight has" "highlights have"}} suggested tags awaiting your confirmation; suggestions look muted.{{end}}
+  <kbd>cc</kbd> renames, <kbd>m</kbd> merges into another tag, <kbd>dd</kbd> deletes.</p>
+<div class="tag-list">
+  {{range .Tags}}{{template "tag-row" .}}{{end}}
+</div>
+{{if .Untagged}}<p class="empty untagged">{{.Untagged}} {{plural .Untagged "highlight has" "highlights have"}} no tag. New highlights get suggestions when most of their nearest neighbors share a tag.</p>{{end}}
+{{else if not .Seed.Running}}
+<p class="empty">No tags yet. Press <kbd>t</kbd> on a quote to tag it, or have tags suggested above.</p>
+{{end}}
+{{template "foot" .}}
+
+{{define "tag-row"}}
+<div class="tag-row" id="tag-{{.ID}}" data-item="tag" data-id="{{.ID}}" tabindex="-1">
+  <div class="tag-main">
+    <a class="tag-name" href="/search?tag={{.ID}}" data-action="open">{{.Name}}</a>
+    <span class="tag-count">{{.Count}} · {{.Books}} {{plural .Books "book" "books"}}{{if .Suggested}} · {{.Suggested}} suggested{{end}}</span>
+    {{with .TopBooks}}<p class="tag-books">{{range $i, $b := .}}{{if $i}} · {{end}}{{$b.Title}}{{end}}{{if gt $.Books (len .)}} · …{{end}}</p>{{end}}
+  </div>
+  <div class="tag-actions">
+    <button type="button" class="link" data-action="edit" title="Rename (cc)"
+      hx-get="/tags/{{.ID}}/rename" hx-target="#tag-{{.ID}}" hx-swap="outerHTML">Rename</button>
+    <button type="button" class="link" data-action="merge" title="Merge into another tag (m)"
+      hx-get="/tags/{{.ID}}/merge" hx-target="#tag-{{.ID}}" hx-swap="outerHTML">Merge</button>
+    <button type="button" class="link" data-action="delete" title="Delete (dd)"
+      hx-get="/tags/{{.ID}}/delete" hx-target="#tag-{{.ID}}" hx-swap="outerHTML">Delete</button>
+  </div>
+</div>
+{{end}}
+
+{{define "tag-rename"}}
+<form class="tag-row tag-rename" id="tag-{{.ID}}"
+  hx-put="/tags/{{.ID}}" hx-target="this" hx-swap="outerHTML">
+  <div class="tag-main">
+    <input name="name" value="{{.Draft}}" aria-label="Name for this tag"
+      maxlength="80" autocomplete="off" autofocus>
+    {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+    <div class="form-actions">
+      <button type="submit">Save name</button>
+      <button type="button" class="link" data-action="cancel"
+        hx-get="/tags/{{.ID}}" hx-target="#tag-{{.ID}}" hx-swap="outerHTML">Cancel</button>
+      <span class="hint"><kbd>↩</kbd> saves · <kbd>Esc</kbd> cancels · a name another tag has merges the two</span>
+    </div>
+  </div>
+</form>
+{{end}}
+
+{{define "tag-merge"}}
+<form class="tag-row tag-merge" id="tag-{{.ID}}"
+  hx-post="/tags/{{.ID}}/merge" hx-target="this" hx-swap="outerHTML">
+  <div class="tag-main">
+    <label>Merge “{{.Name}}” ({{.Count}}) into
+      <select name="into" autofocus data-submit-on-enter>
+        {{range .Others}}<option value="{{.ID}}">{{.Name}} ({{.Count}})</option>{{end}}
+      </select>
+    </label>
+    {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+    <div class="form-actions">
+      <button type="submit">Merge</button>
+      <button type="button" class="link" data-action="cancel"
+        hx-get="/tags/{{.ID}}" hx-target="#tag-{{.ID}}" hx-swap="outerHTML">Cancel</button>
+      <span class="hint">type to find a tag · <kbd>↩</kbd> merges · <kbd>Esc</kbd> cancels · “{{.Name}}” goes away</span>
+    </div>
+  </div>
+</form>
+{{end}}
+
+{{define "tag-delete"}}
+<div class="tag-row is-confirming" id="tag-{{.ID}}" data-item="tag" data-id="{{.ID}}" tabindex="-1">
+  <div class="tag-main">
+    <p>Delete “{{.Name}}” from {{.Count}} {{plural .Count "highlight" "highlights"}}? This can't be undone.</p>
+    <div class="form-actions">
+      <button type="button" class="danger" autofocus
+        hx-delete="/tags/{{.ID}}" hx-target="#tag-{{.ID}}" hx-swap="outerHTML">Delete tag</button>
+      <button type="button" class="link" data-action="cancel"
+        hx-get="/tags/{{.ID}}" hx-target="#tag-{{.ID}}" hx-swap="outerHTML">Cancel</button>
+      <span class="hint"><kbd>↩</kbd> deletes · <kbd>Esc</kbd> cancels</span>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "tag-deleted"}}
+<p class="tag-deleted" id="tag-{{.ID}}">Deleted “{{.Name}}”.</p>
+{{end}}
+
+{{/* The panel that suggests a first set of tags. While a run goes it
+     polls itself; when the run ends, the server tells htmx to reload the
+     page. */}}
+{{define "seed-status"}}
+<section id="seed" class="seed{{if .Running}} is-running{{end}}" aria-live="polite"
+  {{if .Running}}hx-get="/tags/seed" hx-trigger="every 1s" hx-swap="outerHTML"{{end}}>
+{{if not .Enabled}}
+  <p>Suggesting tags needs Ollama for embeddings and naming. Start Ollama and restart <code>cmpl serve</code>.</p>
+{{else if .Running}}
+  <p class="seed-state"><span class="spinner" aria-hidden="true"></span>
+    {{.Progress.Stage}}{{if .Progress.Total}}: {{.Progress.Done}} of {{.Progress.Total}}{{end}}…</p>
+  {{if .Progress.Total}}<progress max="{{.Progress.Total}}" value="{{.Progress.Done}}">{{percent .Progress.Done .Progress.Total}}%</progress>{{end}}
+  <p class="hint-text">This takes a few minutes, mostly naming. You can leave this page and keep reading.</p>
+{{else if and .Err (not .Finished.IsZero)}}
+  <p class="seed-error" role="alert"><strong>Suggesting tags failed</strong> {{ago .Now .Finished}}: {{.Err}}.</p>
+{{else if not .Finished.IsZero}}
+  <p class="seed-ok"><strong>Suggested</strong> {{.Result.Tags}} {{plural .Result.Tags "tag" "tags"}} {{ago .Now .Finished}}. They look muted on quotes until you confirm them with <kbd>T</kbd>, or fix them with <kbd>t</kbd>.{{if .Result.Unembedded}} {{.Result.Unembedded}} {{plural .Result.Unembedded "highlight isn't" "highlights aren't"}} embedded yet and {{plural .Result.Unembedded "was" "were"}} left out.{{end}}</p>
+{{else}}
+  <div class="seed-action">
+    <button type="button" data-action="seed" title="Suggest tags (R)"
+      hx-post="/tags/seed" hx-target="#seed" hx-swap="outerHTML">Suggest tags</button>
+    <p class="hint-text">Groups your highlights by what they say and asks {{.NameModel}} in Ollama to name each group. Each group becomes a suggested tag. Takes a few minutes. After this, new highlights get tags from their nearest neighbors.</p>
+  </div>
+{{end}}
+</section>
+{{end}}

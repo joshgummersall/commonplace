@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -301,8 +302,9 @@ func TestKeepFreshCatchesUpWhenEmbedderReturns(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&lockedWriter{w: &logs}, nil))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
+	var thens atomic.Int32
 	go func() {
-		KeepFresh(ctx, s, f, 10*time.Millisecond, logger)
+		KeepFresh(ctx, s, f, 10*time.Millisecond, logger, func() { thens.Add(1) })
 		close(done)
 	}()
 
@@ -319,6 +321,11 @@ func TestKeepFreshCatchesUpWhenEmbedderReturns(t *testing.T) {
 	<-done
 	if n := stale(t, s, "m1"); n != 0 {
 		t.Fatalf("%d still stale after the embedder came back", n)
+	}
+	// Only the backfill that embedded something counts: the failed rounds
+	// and the idle ones after it don't.
+	if n := thens.Load(); n != 1 {
+		t.Errorf("then ran %d times, want 1", n)
 	}
 	out := logs.String()
 	if c := strings.Count(out, "embeddings paused"); c != 1 {

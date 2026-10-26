@@ -1,4 +1,4 @@
-package themes
+package autotag
 
 import (
 	"context"
@@ -12,23 +12,19 @@ import (
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
-// Namer names a group of highlights from its most typical passages. Broad
-// asks for an area's subject rather than a theme's idea. An empty name
-// means the passages share no idea, and the group is dropped.
+// Namer names a group of highlights from its most typical passages. An
+// empty name drops the group.
 type Namer interface {
 	Model() string
-	Name(ctx context.Context, passages []string, broad bool) (string, error)
+	Name(ctx context.Context, passages []string) (string, error)
 }
 
-// DefaultNameModel is the Ollama model that names themes unless
+// DefaultNameModel is the Ollama model that names suggested tags unless
 // configured otherwise.
 const DefaultNameModel = "qwen2.5:14b"
 
 // ErrUnavailable means the naming model could not be reached.
 var ErrUnavailable = ollama.ErrUnavailable
-
-// noTheme is what the model answers when a group shares no idea.
-const noTheme = "no clear theme"
 
 // OllamaNamer names groups with a model served by Ollama's /api/generate.
 type OllamaNamer struct {
@@ -46,25 +42,18 @@ func NewOllamaNamer(baseURL, model string) *OllamaNamer {
 
 func (o *OllamaNamer) Model() string { return o.ModelName }
 
-// Book titles are withheld from the prompt so the model names the idea
-// rather than the book.
+// Book titles are withheld from the prompt so the model names the
+// subject rather than the book.
 const (
-	themePrompt = "These passages were highlighted by one reader. Name the idea they share in 2 to 5 English words, in sentence case. " +
-		"Name the idea, not a book or author. If they share no idea, answer exactly: " + noTheme + ". " +
-		"Answer with the name only.\n\n"
-	areaPrompt = "These passages were highlighted by one reader. Name the broad subject they share in 1 to 4 English words, in sentence case. " +
+	prompt = "These passages were highlighted by one reader. Name the broad subject they share in 1 to 4 English words, in sentence case. " +
 		"Name the subject, not a book or author. Answer with the name only.\n\n"
 	// passageChars caps each passage in the prompt.
 	passageChars = 300
 )
 
-func (o *OllamaNamer) Name(ctx context.Context, passages []string, broad bool) (string, error) {
+func (o *OllamaNamer) Name(ctx context.Context, passages []string) (string, error) {
 	var b strings.Builder
-	if broad {
-		b.WriteString(areaPrompt)
-	} else {
-		b.WriteString(themePrompt)
-	}
+	b.WriteString(prompt)
 	for _, p := range passages {
 		fmt.Fprintf(&b, "- %s\n", truncate(strings.Join(strings.Fields(p), " "), passageChars))
 	}
@@ -84,8 +73,8 @@ func (o *OllamaNamer) Name(ctx context.Context, passages []string, broad bool) (
 }
 
 // cleanName tidies a model's answer into a display name: one line, no
-// quotes or final period, sentence case, at most store.MaxThemeName
-// characters. The decline answer becomes "".
+// quotes, commas, or final period, sentence case, at most
+// store.MaxTagName characters.
 func cleanName(s string) string {
 	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
 	// Qwen models sometimes drift into Chinese mid-answer.
@@ -96,8 +85,8 @@ func cleanName(s string) string {
 		return r
 	}, s)
 	s = strings.Trim(strings.TrimSpace(s), `"'“”‘’*.`)
-	s = strings.Join(strings.Fields(s), " ")
-	if strings.EqualFold(s, noTheme) || s == "" {
+	s = strings.Join(strings.Fields(strings.ReplaceAll(s, ",", " ")), " ")
+	if s == "" {
 		return ""
 	}
 	if s == strings.ToUpper(s) {
@@ -106,7 +95,7 @@ func cleanName(s string) string {
 	s = sentenceCase(s)
 	r, size := utf8.DecodeRuneInString(s)
 	s = string(unicode.ToUpper(r)) + s[size:]
-	return truncate(s, store.MaxThemeName)
+	return truncate(s, store.MaxTagName)
 }
 
 // sentenceCase lowercases the later words of a title-cased name ("Risks

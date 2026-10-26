@@ -5,10 +5,10 @@ argument-hint: [topic]
 disable-model-invocation: true
 ---
 
-The user names a topic. With no topic, pick a random theme that spans three or more books, and say which one you picked:
+The user names a topic. With no topic, pick a random tag that spans three or more books, and say which one you picked:
 
 ```sh
-cmpl themes | jq -r '.areas[] | (.themes // [.])[] | select(.books >= 3) | "\(.id)\t\(.name)"' | awk 'BEGIN { srand() } { a[NR] = $0 } END { print a[int(rand() * NR) + 1] }'
+cmpl tags | jq -r '.tags[] | select(.books >= 3) | "\(.id)\t\(.name)"' | awk 'BEGIN { srand() } { a[NR] = $0 } END { print a[int(rand() * NR) + 1] }'
 ```
 
 Use its name as the topic and its id in step 1.
@@ -19,8 +19,8 @@ Run every library read through `cmpl` (read-only; `cmpl help <command>` has flag
 
 ## 1. Gather
 
-1. Run `cmpl themes` and note every area or theme that bears on the topic, including neighboring ones.
-2. Run `cmpl search '<phrasing>' --notes --limit 20` for the topic in four or more phrasings: the plain topic, the underlying question, its opposite or failure mode, and an adjacent field's framing of it. Run `cmpl list --theme <id> --notes` for each matching theme.
+1. Run `cmpl tags` and note every tag that bears on the topic, including neighboring ones.
+2. Run `cmpl search '<phrasing>' --notes --limit 20` for the topic in four or more phrasings: the plain topic, the underlying question, its opposite or failure mode, and an adjacent field's framing of it. Run `cmpl list --tag <id> --notes` for each matching tag.
 3. For the strongest hits (favorites, highlights with user notes, highlights that state a claim), run `cmpl similar <id> --notes`.
 
 Done when a new phrasing or `similar` call returns mostly ids you already have, and you hold evidence on both sides of the topic or know that one side is missing from the library.

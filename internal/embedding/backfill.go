@@ -57,9 +57,11 @@ func Backfill(ctx context.Context, s *store.Store, e Embedder, progress func(don
 // KeepFresh runs Backfill now and then every interval until ctx ends, so
 // highlights imported while the embedder was down, or a model change, get
 // picked up once it is reachable. It logs when the embedder becomes
-// unreachable or reachable again, not on every attempt.
-func KeepFresh(ctx context.Context, s *store.Store, e Embedder, interval time.Duration, logger *slog.Logger) {
+// unreachable or reachable again, not on every attempt. then, if set, runs
+// after the first backfill and after each that embedded something.
+func KeepFresh(ctx context.Context, s *store.Store, e Embedder, interval time.Duration, logger *slog.Logger, then func()) {
 	unavailable := false
+	first := true
 	run := func() {
 		n, err := Backfill(ctx, s, e, nil)
 		switch {
@@ -78,6 +80,10 @@ func KeepFresh(ctx context.Context, s *store.Store, e Embedder, interval time.Du
 			if n > 0 {
 				logger.Info("embedded highlights", "count", n, "model", e.Model())
 			}
+			if then != nil && (first || n > 0) {
+				then()
+			}
+			first = false
 		}
 	}
 	run()

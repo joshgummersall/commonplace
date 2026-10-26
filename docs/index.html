@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Commonplace · your e-reader highlights, resurfaced</title>
-<meta name="description" content="A personal, self-hosted home for your e-reader highlights: import them, search them by words and by meaning, see the themes that run across your books, and get a daily shuffle of past highlights back.">
+<meta name="description" content="A personal, self-hosted home for your e-reader highlights: import them, search them by words and by meaning, tag them, with suggestions from a local model, and get a daily shuffle of past highlights back.">
 <link rel="icon" href="data:,">
 <style>
   /* Tokens and components follow internal/web/static/app.css. */
@@ -157,24 +157,20 @@
   }
   .count { font-size: 0.875rem; color: var(--muted); margin: 0 0 1rem; }
 
-  .theme-link { flex-basis: 100%; font-size: 0.8125rem; }
-  .theme-link a { color: var(--muted); }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 0.375rem 0.5rem; margin-top: 0.5rem; font-size: 0.8125rem; }
+  .tag { border: 1px solid var(--rule); border-radius: 999px; padding: 0.0625rem 0.5rem; }
+  .tag.is-suggested { color: var(--muted); border-style: dashed; }
 
-  /* Themes */
+  /* Tags */
 
-  .areas { display: flex; flex-direction: column; gap: 0.5rem; }
-  .area { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
-  .area-themes { border-top: 1px solid var(--rule); padding: 0.25rem 0; }
-  .theme-row { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.625rem 0.75rem; border-left: 3px solid transparent; }
-  .theme-row.is-current { border-left-color: var(--accent); background: var(--accent-soft); }
-  .area-themes .theme-row { padding-left: 2.25rem; }
-  .fold { flex: none; width: 1.5rem; color: var(--muted); text-align: center; }
-  .fold.open { transform: rotate(90deg); }
-  .theme-main { flex: 1; min-width: 0; }
-  .theme-name { font-weight: 600; }
-  .is-area .theme-name { font-family: var(--serif); font-size: 1.125rem; }
-  .theme-count { font-size: 0.8125rem; color: var(--muted); margin-left: 0.5rem; white-space: nowrap; }
-  .theme-books { margin: 0.125rem 0 0; font-size: 0.8125rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag-list { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .tag-row { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.625rem 0.75rem; border-left: 3px solid transparent; }
+  .tag-row + .tag-row { border-top: 1px solid var(--rule); }
+  .tag-row.is-current { border-left-color: var(--accent); background: var(--accent-soft); }
+  .tag-main { flex: 1; min-width: 0; }
+  .tag-name { font-weight: 600; }
+  .tag-count { font-size: 0.8125rem; color: var(--muted); margin-left: 0.5rem; white-space: nowrap; }
+  .tag-books { margin: 0.125rem 0 0; font-size: 0.8125rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Notes */
 
@@ -268,8 +264,8 @@
   <section class="hero">
     <h1>Your highlights, back where you'll read them.</h1>
     <p>Highlights on an e-reader pile up in <code>My Clippings.txt</code> and are never seen again.
-      Commonplace imports them, searches them by words and by meaning, finds the themes that run
-      across your books, and hands a few back each day.
+      Commonplace imports them, searches them by words and by meaning, suggests tags from what
+      similar highlights carry, and hands a few back each day.
       One binary, one database file, on your own machine.</p>
     <div class="actions">
       <a class="button primary" href="#install">Install</a>
@@ -286,8 +282,8 @@
       <footer class="meta">
         <cite>Meditations <span class="author">Marcus Aurelius</span></cite>
         <span>page 138, loc 2452-2456</span>
-        <span class="theme-link">Theme: <a href="#themes">What is up to us</a></span>
       </footer>
+      <div class="card-tags"><a class="tag" href="#tags">What is up to us</a><a class="tag is-suggested" href="#tags">Living simply</a></div>
       <div class="actions">
         <span class="button on">★ Favorite</span>
         <span class="button">Add a note</span>
@@ -337,54 +333,37 @@
     </article>
   </div>
 
-  <h2 id="themes">Themes</h2>
-  <p class="lede">What do you keep underlining? Commonplace groups highlights that say related things,
-    usually across books, into broad areas holding specific themes, and a local model names each one.
-    Open a theme to read its highlights, most typical first. Rename any theme; your names are kept.</p>
-  <div class="areas">
-    <section class="area">
-      <div class="theme-row is-area is-current">
-        <span class="fold open" aria-hidden="true">▸</span>
-        <div class="theme-main">
-          <span class="theme-name">Control and acceptance</span><span class="theme-count">41 · 9 books · 2 themes</span>
-          <p class="theme-books">Meditations · Enchiridion · Letters from a Stoic · …</p>
-        </div>
+  <h2 id="tags">Tags</h2>
+  <p class="lede">What do you keep underlining? Commonplace can group highlights that say related things,
+    usually across books, and have a local model name each group as a suggested tag. After that, each new
+    highlight is suggested the tags most of its nearest neighbors carry. Suggestions look muted until you
+    confirm them. Fix any tag on a quote; a tag you remove is never suggested for it again.
+    Rename, merge, or delete tags as you like.</p>
+  <div class="tag-list">
+    <div class="tag-row is-current">
+      <div class="tag-main">
+        <span class="tag-name">Control and acceptance</span><span class="tag-count">41 · 9 books · 6 suggested</span>
+        <p class="tag-books">Meditations · Enchiridion · Letters from a Stoic · …</p>
       </div>
-      <div class="area-themes">
-        <div class="theme-row">
-          <span class="fold" aria-hidden="true"></span>
-          <div class="theme-main">
-            <span class="theme-name">What is up to us</span><span class="theme-count">14 · 5 books</span>
-            <p class="theme-books">Enchiridion · Meditations · The Consolation of Philosophy · …</p>
-          </div>
-        </div>
-        <div class="theme-row">
-          <span class="fold" aria-hidden="true"></span>
-          <div class="theme-main">
-            <span class="theme-name">Fear of what hasn't happened</span><span class="theme-count">9 · 4 books</span>
-            <p class="theme-books">Letters from a Stoic · Essays · Meditations · …</p>
-          </div>
-        </div>
+    </div>
+    <div class="tag-row">
+      <div class="tag-main">
+        <span class="tag-name">Living simply</span><span class="tag-count">27 · 6 books</span>
+        <p class="tag-books">Walden · Essays · Letters from a Stoic · …</p>
       </div>
-    </section>
-    <section class="area">
-      <div class="theme-row is-area">
-        <span class="fold" aria-hidden="true">▸</span>
-        <div class="theme-main">
-          <span class="theme-name">Living simply</span><span class="theme-count">27 · 6 books · 2 themes</span>
-          <p class="theme-books">Walden · Essays · Letters from a Stoic · …</p>
-        </div>
+    </div>
+    <div class="tag-row">
+      <div class="tag-main">
+        <span class="tag-name">What is up to us</span><span class="tag-count">14 · 5 books · 2 suggested</span>
+        <p class="tag-books">Enchiridion · Meditations · The Consolation of Philosophy · …</p>
       </div>
-    </section>
-    <section class="area">
-      <div class="theme-row is-area">
-        <span class="fold" aria-hidden="true"></span>
-        <div class="theme-main">
-          <span class="theme-name">Writing plainly</span><span class="theme-count">18 · 5 books</span>
-          <p class="theme-books">The Elements of Style · Politics and the English Language · …</p>
-        </div>
+    </div>
+    <div class="tag-row">
+      <div class="tag-main">
+        <span class="tag-name">Writing plainly</span><span class="tag-count">18 · 5 books</span>
+        <p class="tag-books">The Elements of Style · Politics and the English Language · …</p>
       </div>
-    </section>
+    </div>
   </div>
 
   <h2>What it does</h2>
@@ -393,8 +372,8 @@
       <span>Re-import any time. It skips what it has, keeps the final version of a highlight you extended or trimmed, and keeps your notes.</span></li>
     <li><strong>Searches by words and meaning together</strong>
       <span>Meaning comes from a local embedding model in <a href="https://ollama.com/">Ollama</a>. Without Ollama, search falls back to words.</span></li>
-    <li><strong>Finds themes across your books</strong>
-      <span>Groups related highlights by meaning, with names from a local model. Refresh them after an import; filter Search by theme.</span></li>
+    <li><strong>Suggests tags you can correct</strong>
+      <span>Groups related highlights by meaning, named by a local model, then tags new highlights from their neighbors. Confirm, fix, or remove any tag; filter Search by tag.</span></li>
     <li><strong>Keeps notes, favorites, and burials</strong>
       <span>Write dated notes on any quote. Favorite what you want to see more; bury what you don't want in Daily.</span></li>
     <li><strong>Stays on your machine</strong>
@@ -403,7 +382,7 @@
 
   <h2 id="install">Install</h2>
   <pre><code>brew install --cask joshgummersall/commonplace/commonplace</code></pre>
-  <p>For search by meaning and themes, add <a href="https://ollama.com/">Ollama</a> with an embedding model and a model to name themes (optional):</p>
+  <p>For search by meaning and tag suggestions, add <a href="https://ollama.com/">Ollama</a> with an embedding model and a model to name tags (optional):</p>
   <pre><code>ollama pull qwen3-embedding:0.6b
 ollama pull qwen2.5:14b</code></pre>
 
@@ -416,19 +395,18 @@ cmpl serve                     <span class="c"># http://127.0.0.1:8420</span></c
   <dl class="keys">
     <dt><kbd>j</kbd> <kbd>k</kbd> <kbd>gg</kbd> <kbd>G</kbd></dt><dd>Move between quotes, with counts (<kbd>5j</kbd>)</dd>
     <dt><kbd>o</kbd> / <kbd>h</kbd></dt><dd>Open a quote / go back</dd>
-    <dt><kbd>/</kbd> <kbd>gd</kbd> <kbd>gt</kbd> <kbd>gf</kbd></dt><dd>Search, Daily, Themes, favorites only</dd>
-    <dt><kbd>t</kbd></dt><dd>The quote's theme</dd>
-    <dt><kbd>za</kbd> <kbd>zR</kbd> <kbd>zM</kbd></dt><dd>Open or close an area, all areas</dd>
-    <dt><kbd>R</kbd></dt><dd>Refresh themes</dd>
+    <dt><kbd>/</kbd> <kbd>gd</kbd> <kbd>gt</kbd> <kbd>gf</kbd></dt><dd>Search, Daily, Tags, favorites only</dd>
+    <dt><kbd>t</kbd> <kbd>T</kbd></dt><dd>Edit the quote's tags, confirm its suggested tags</dd>
     <dt><kbd>f</kbd> <kbd>b</kbd> <kbd>s</kbd></dt><dd>Favorite, bury, more like this</dd>
-    <dt><kbd>i</kbd> <kbd>cc</kbd> <kbd>dd</kbd></dt><dd>Write, edit, delete a note; <kbd>cc</kbd> also renames a theme</dd>
+    <dt><kbd>i</kbd> <kbd>cc</kbd> <kbd>dd</kbd></dt><dd>Write, edit, delete a note; on the Tags page, rename or delete a tag</dd>
+    <dt><kbd>m</kbd></dt><dd>Merge a tag into another, on the Tags page</dd>
     <dt><kbd>yy</kbd> <kbd>u</kbd></dt><dd>Copy the quote with its source, undo</dd>
   </dl>
 
   <h2>For agents</h2>
   <p class="lede">Read commands print JSON, so an agent such as Claude Code can work with your library.
     <code>cmpl help</code> documents every command. They never change your highlights.
-    <code>cmpl themes</code> lists themes, and <code>--theme</code> narrows <code>list</code> and <code>search</code> to one.</p>
+    <code>cmpl tags</code> lists tags, and <code>--tag</code> narrows <code>list</code> and <code>search</code> to one.</p>
   <pre><code>cmpl search 'fear of failure' --limit 1
 <span class="c">{
   "total": 14,
@@ -439,7 +417,7 @@ cmpl serve                     <span class="c"># http://127.0.0.1:8420</span></c
       "text": "We suffer more often in imagination than in reality.",
       "title": "Letters from a Stoic",
       "author": "Seneca",
-      "theme": {"id": 31, "name": "Fear of what hasn't happened"},
+      "tags": [{"id": 31, "name": "Fear of what hasn't happened"}],
       "why": ["similar in meaning"],
       ...
     }
