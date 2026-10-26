@@ -1,4 +1,6 @@
 {{define "card"}}
+{{/* $detail tells a card action that it came from the quote page. */ -}}
+{{$detail := ""}}{{if .Detail}}{{$detail = "?detail=1"}}{{end -}}
 <article class="card{{if .Buried}} is-buried{{end}}{{if .ConfirmBury}} is-confirming{{end}}" id="h-{{.ID}}" data-item="quote" data-id="{{.ID}}" tabindex="-1">
   {{if .Buried}}
   <p class="buried-banner">Buried: hidden from Daily and Search. The Buried filter on Search finds it.</p>
@@ -23,10 +25,10 @@
     <p>Bury this quote? It leaves Daily and Search; the Buried filter on Search still finds it.</p>
     <div class="form-actions">
       <button type="button" class="danger" autofocus
-        hx-post="/h/{{.ID}}/bury{{if .Detail}}?detail=1{{end}}" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
+        hx-post="/h/{{.ID}}/bury{{$detail}}" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
       {{/* Hidden: Esc clicks it. */}}
       <button type="button" data-action="cancel" hidden
-        hx-get="/h/{{.ID}}/card{{if .Detail}}?detail=1{{end}}" hx-target="closest .card" hx-swap="outerHTML">Cancel</button>
+        hx-get="/h/{{.ID}}/card{{$detail}}" hx-target="closest .card" hx-swap="outerHTML">Cancel</button>
       <span class="hint"><kbd>↩</kbd> buries · <kbd>Esc</kbd> cancels</span>
     </div>
   </div>
@@ -41,10 +43,10 @@
     {{end}}
     {{if .Buried}}
     <button type="button" data-action="unbury" title="Show in Daily and Search again (b)"
-      hx-post="/h/{{.ID}}/unbury{{if .Detail}}?detail=1{{end}}" hx-target="closest .card" hx-swap="outerHTML">Unbury</button>
+      hx-post="/h/{{.ID}}/unbury{{$detail}}" hx-target="closest .card" hx-swap="outerHTML">Unbury</button>
     {{else}}
     <button type="button" data-action="bury" title="Hide from Daily and Search (b)"
-      hx-get="/h/{{.ID}}/bury{{if .Detail}}?detail=1{{end}}" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
+      hx-get="/h/{{.ID}}/bury{{$detail}}" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
     {{end}}
   </div>
   {{end}}
