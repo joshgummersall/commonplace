@@ -10,9 +10,6 @@ import (
 	"github.com/joshgummersall/commonplace/internal/ollama"
 )
 
-// DefaultOllamaURL is where a local Ollama listens by default.
-const DefaultOllamaURL = ollama.DefaultURL
-
 // DefaultModel is the embedding model used unless configured otherwise.
 const DefaultModel = "qwen3-embedding:0.6b"
 

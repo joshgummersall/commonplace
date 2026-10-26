@@ -50,7 +50,10 @@ func TestPost(t *testing.T) {
 	}
 
 	err := serve(t, 404, `{"error":"model \"m\" not found, try pulling it first"}`).Post(ctx, "/api/test", "m", nil, &r)
-	if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "ollama pull m") {
+	var unavailable *UnavailableError
+	if !errors.Is(err, ErrUnavailable) || !errors.As(err, &unavailable) ||
+		unavailable.Reason != "model m is not pulled; run `ollama pull m`" ||
+		err.Error() != "model unavailable: model m is not pulled; run `ollama pull m`" {
 		t.Errorf("not pulled: err = %v", err)
 	}
 

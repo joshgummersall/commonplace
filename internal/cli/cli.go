@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/joshgummersall/commonplace/internal/embedding"
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -136,7 +137,7 @@ unless overridden by $` + dbEnvVar + ` or --db.`,
 		&cobra.Group{ID: "manage", Title: "Manage the library:"},
 	)
 	root.PersistentFlags().StringVar(&a.dbFlag, "db", "", "database path (default $"+dbEnvVar+" or ~/.local/share/commonplace/commonplace.db)")
-	root.PersistentFlags().StringVar(&a.ollamaURL, "ollama-url", "", "Ollama address for embeddings (default $OLLAMA_HOST or "+embedding.DefaultOllamaURL+")")
+	root.PersistentFlags().StringVar(&a.ollamaURL, "ollama-url", "", "Ollama address for embeddings (default $OLLAMA_HOST or "+ollama.DefaultURL+")")
 	root.PersistentFlags().StringVar(&a.model, "embed-model", embedding.DefaultModel, "Ollama embedding model; changing it re-embeds every highlight")
 	root.CompletionOptions.DisableDefaultCmd = true
 

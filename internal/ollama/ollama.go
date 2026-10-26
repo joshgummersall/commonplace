@@ -23,6 +23,14 @@ const DefaultURL = "http://localhost:11434"
 // (keyword search, no tag suggestions) rather than failing.
 var ErrUnavailable = errors.New("model unavailable")
 
+// UnavailableError is ErrUnavailable with the reason, which is plain
+// enough to show to people as is. errors.Is matches it to ErrUnavailable.
+type UnavailableError struct{ Reason string }
+
+func (e *UnavailableError) Error() string { return ErrUnavailable.Error() + ": " + e.Reason }
+
+func (e *UnavailableError) Is(target error) bool { return target == ErrUnavailable }
+
 // maxResponse caps how much of a reply is read. A batch of embeddings is
 // the largest reply.
 const maxResponse = 256 << 20
@@ -61,7 +69,7 @@ func (c Client) Post(ctx context.Context, path, model string, req, resp any) err
 	hresp, err := c.HTTP.Do(hreq)
 	if err != nil {
 		if isConnErr(err) {
-			return fmt.Errorf("%w: Ollama is not reachable at %s", ErrUnavailable, c.BaseURL)
+			return &UnavailableError{Reason: "Ollama is not reachable at " + c.BaseURL}
 		}
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -78,7 +86,7 @@ func (c Client) Post(ctx context.Context, path, model string, req, resp any) err
 			return fmt.Errorf("%s: HTTP %d: %.200s", op, hresp.StatusCode, raw)
 		}
 		if hresp.StatusCode == http.StatusNotFound && strings.Contains(e.Error, "not found") {
-			return fmt.Errorf("%w: model %s is not pulled; run `ollama pull %s`", ErrUnavailable, model, model)
+			return &UnavailableError{Reason: fmt.Sprintf("model %s is not pulled; run `ollama pull %s`", model, model)}
 		}
 		return fmt.Errorf("%s: HTTP %d: %s", op, hresp.StatusCode, e.Error)
 	}

@@ -349,7 +349,7 @@ Each highlight adds "score".`,
 			if _, err := s.Entry(ids[0]); err != nil {
 				return fmt.Errorf("no highlight with id %d", ids[0])
 			}
-			other, same, ok, err := search.New(s, a.embedder()).Index.SimilarEntries(ids[0], limit, nil)
+			other, same, ok, err := search.New(s, a.embedder()).Similar(ids[0], limit, search.Query{Buried: search.BuriedIncluded})
 			if err != nil {
 				return err
 			}

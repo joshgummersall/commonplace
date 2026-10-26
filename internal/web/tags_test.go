@@ -18,6 +18,7 @@ import (
 	"github.com/joshgummersall/commonplace/internal/clippings"
 	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/importer"
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -206,7 +207,7 @@ func TestTagsOnAQuote(t *testing.T) {
 }
 
 func TestTagsFailedSeedSaysSo(t *testing.T) {
-	namer := &topicNamer{err: fmt.Errorf("%w: Ollama is not reachable at http://localhost:11434", autotag.ErrUnavailable)}
+	namer := &topicNamer{err: fmt.Errorf("%w: Ollama is not reachable at http://localhost:11434", ollama.ErrUnavailable)}
 	h, w := newTagHarness(t, namer)
 	h.do("POST", "/tags/seed", url.Values{}, true)
 	w.seeder.Wait()

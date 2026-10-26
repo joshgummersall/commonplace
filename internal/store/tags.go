@@ -191,24 +191,6 @@ func (s *Store) TagsOf(ids []int64) (map[int64][]TagRef, error) {
 	return out, rows.Err()
 }
 
-// TagMemberIDs returns the set of highlights a tag is on.
-func (s *Store) TagMemberIDs(id int64) (map[int64]bool, error) {
-	rows, err := s.db.Query(`SELECT highlight_id FROM highlight_tags WHERE tag_id = ? AND state != 'no'`, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make(map[int64]bool)
-	for rows.Next() {
-		var hid int64
-		if err := rows.Scan(&hid); err != nil {
-			return nil, err
-		}
-		out[hid] = true
-	}
-	return out, rows.Err()
-}
-
 // UntaggedCount counts highlights with no tag, leaving out buried ones.
 func (s *Store) UntaggedCount() (int, error) {
 	var n int

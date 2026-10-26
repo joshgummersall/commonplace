@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -115,7 +116,7 @@ func TestOllamaErrors(t *testing.T) {
 		srv := httptest.NewServer(&fakeOllama{status: 404, body: `{"error":"model \"qwen3-embedding:0.6b\" not found, try pulling it first"}`})
 		defer srv.Close()
 		_, err := NewOllama(srv.URL, "").EmbedDocuments(ctx, []string{"x"})
-		if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "ollama pull qwen3-embedding:0.6b") {
+		if !errors.Is(err, ollama.ErrUnavailable) || !strings.Contains(err.Error(), "ollama pull qwen3-embedding:0.6b") {
 			t.Errorf("err = %v", err)
 		}
 	})
@@ -128,8 +129,8 @@ func TestOllamaErrors(t *testing.T) {
 		addr := ln.Addr().String()
 		ln.Close() // nothing listens here now
 		_, err = NewOllama(addr, "").EmbedDocuments(ctx, []string{"x"})
-		if !errors.Is(err, ErrUnavailable) {
-			t.Errorf("err = %v, want ErrUnavailable", err)
+		if !errors.Is(err, ollama.ErrUnavailable) {
+			t.Errorf("err = %v, want ollama.ErrUnavailable", err)
 		}
 	})
 
@@ -137,7 +138,7 @@ func TestOllamaErrors(t *testing.T) {
 		srv := httptest.NewServer(&fakeOllama{status: 500, body: `{"error":"out of memory"}`})
 		defer srv.Close()
 		_, err := NewOllama(srv.URL, "").EmbedDocuments(ctx, []string{"x"})
-		if err == nil || errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "out of memory") {
+		if err == nil || errors.Is(err, ollama.ErrUnavailable) || !strings.Contains(err.Error(), "out of memory") {
 			t.Errorf("err = %v, want a plain error naming the cause", err)
 		}
 	})
@@ -266,10 +267,10 @@ func TestBackfill(t *testing.T) {
 
 func TestBackfillKeepsProgressOnFailure(t *testing.T) {
 	s := seedHighlights(t, 70)
-	e := &hashEmbedder{model: "m1", fail: fmt.Errorf("%w: down", ErrUnavailable), at: 2}
+	e := &hashEmbedder{model: "m1", fail: fmt.Errorf("%w: down", ollama.ErrUnavailable), at: 2}
 	n, err := Backfill(context.Background(), s, e, nil)
-	if !errors.Is(err, ErrUnavailable) || n != 32 {
-		t.Fatalf("Backfill = %d, %v; want the first batch saved, then ErrUnavailable", n, err)
+	if !errors.Is(err, ollama.ErrUnavailable) || n != 32 {
+		t.Fatalf("Backfill = %d, %v; want the first batch saved, then ollama.ErrUnavailable", n, err)
 	}
 	if left := stale(t, s, "m1"); left != 38 {
 		t.Errorf("stale after failure = %d, want 38", left)
@@ -291,7 +292,7 @@ func (f *flaky) EmbedDocuments(ctx context.Context, texts []string) ([][]float32
 	case <-f.up:
 		return f.hashEmbedder.EmbedDocuments(ctx, texts)
 	default:
-		return nil, fmt.Errorf("%w: down", ErrUnavailable)
+		return nil, fmt.Errorf("%w: down", ollama.ErrUnavailable)
 	}
 }
 

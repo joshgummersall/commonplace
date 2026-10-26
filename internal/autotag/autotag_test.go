@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/joshgummersall/commonplace/internal/embedding"
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -278,9 +279,9 @@ func TestSeedSuggestsNamedGroups(t *testing.T) {
 
 func TestSeedFailureSavesNothing(t *testing.T) {
 	s := openStore(t, library())
-	down := &fakeNamer{err: fmt.Errorf("%w: Ollama is not reachable", ErrUnavailable)}
-	if _, err := Seed(context.Background(), s, model, down, nil); !errors.Is(err, ErrUnavailable) {
-		t.Fatalf("err = %v, want ErrUnavailable", err)
+	down := &fakeNamer{err: fmt.Errorf("%w: Ollama is not reachable", ollama.ErrUnavailable)}
+	if _, err := Seed(context.Background(), s, model, down, nil); !errors.Is(err, ollama.ErrUnavailable) {
+		t.Fatalf("err = %v, want ollama.ErrUnavailable", err)
 	}
 	if n, _ := s.CountTags(); n != 0 {
 		t.Errorf("a failed run saved %d tags", n)

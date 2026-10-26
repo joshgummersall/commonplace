@@ -171,6 +171,34 @@ func Count(s *store.Store, q Query) (int, error) {
 	return n, nil
 }
 
+// filterIDs returns the highlights passing q's filters, ignoring its text,
+// for searches ranked outside SQL. It returns nil when q has no filters,
+// meaning every highlight passes.
+func filterIDs(s *store.Store, q Query) (map[int64]bool, error) {
+	q.Text = ""
+	from, where, args, _ := clauses(q)
+	if where == noFilter {
+		return nil, nil
+	}
+	rows, err := s.DB().Query(`SELECT h.id `+from+` WHERE `+where, args...)
+	if err != nil {
+		return nil, fmt.Errorf("filter highlights: %w", err)
+	}
+	defer rows.Close()
+	ids := make(map[int64]bool)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = true
+	}
+	return ids, rows.Err()
+}
+
+// noFilter is the WHERE clauses builds when nothing narrows the query.
+const noFilter = "1"
+
 // clauses builds the FROM and WHERE shared by Keyword and Count. ranked is
 // true when there is text to match, so results order by bm25.
 func clauses(q Query) (from, where string, args []any, ranked bool) {
@@ -206,7 +234,7 @@ func clauses(q Query) (from, where string, args []any, ranked bool) {
 		conds = append(conds, "h.buried = 1")
 	}
 	if len(conds) == 0 {
-		conds = append(conds, "1")
+		conds = append(conds, noFilter)
 	}
 	return from, strings.Join(conds, " AND "), args, ranked
 }
