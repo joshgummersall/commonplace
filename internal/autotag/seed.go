@@ -206,20 +206,19 @@ func NewSeeder(s *store.Store, model string, namer Namer, now func() time.Time, 
 // NameModel names the model that names suggested tags.
 func (r *Seeder) NameModel() string { return r.namer.Model() }
 
-// Start begins seeding unless a run is going, and reports whether it
-// began. The run goes to completion even if the caller goes away;
-// stopping the server abandons it with nothing saved.
-func (r *Seeder) Start() bool {
+// Start begins seeding unless a run is going. The run goes to completion
+// even if the caller goes away; stopping the server abandons it with
+// nothing saved.
+func (r *Seeder) Start() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.status.Running {
-		return false
+		return
 	}
 	r.status.Running = true
 	r.status.Progress = Progress{Stage: StageReading}
 	r.done = make(chan struct{})
 	go r.run(r.done)
-	return true
 }
 
 func (r *Seeder) run(done chan struct{}) {

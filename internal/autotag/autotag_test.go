@@ -314,9 +314,7 @@ func TestSeedDropsDeclinedGroups(t *testing.T) {
 func TestSeederReportsStatus(t *testing.T) {
 	s := openStore(t, library())
 	r := NewSeeder(s, model, &fakeNamer{}, func() time.Time { return now }, nil)
-	if !r.Start() {
-		t.Fatal("Start = false with nothing running")
-	}
+	r.Start()
 	r.Wait()
 	st := r.Status()
 	if st.Running || st.Err != "" || st.Finished.IsZero() || st.Result.Tags == 0 {
