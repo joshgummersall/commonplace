@@ -15,14 +15,27 @@ type Query struct {
 	BookID    int64 // 0 means any book
 	TagID     int64 // 0 means any tag; else only highlights with it
 	Favorites bool  // only favorites
-	Limit     int   // 0 means PageSize
-	Offset    int   // rows to skip, for loading the next page
+	Buried    Buried
+	Limit     int // 0 means PageSize
+	Offset    int // rows to skip, for loading the next page
 	// AnyWords matches highlights with any of the words rather than all
 	// of them (phrases still match whole). Hybrid search uses it so a
 	// partial match can rank; bm25 still favors highlights with more of
 	// the words.
 	AnyWords bool
 }
+
+// Buried picks how a query treats buried highlights.
+type Buried int
+
+const (
+	// BuriedIncluded lists them with the rest, as the CLI does.
+	BuriedIncluded Buried = iota
+	// BuriedHidden leaves them out, as the web app does.
+	BuriedHidden
+	// BuriedOnly lists only them, for the web app's Buried filter.
+	BuriedOnly
+)
 
 // PageSize is how many results a page of search holds.
 const PageSize = 50
@@ -185,6 +198,12 @@ func clauses(q Query) (from, where string, args []any, ranked bool) {
 	}
 	if q.Favorites {
 		conds = append(conds, "h.favorite = 1")
+	}
+	switch q.Buried {
+	case BuriedHidden:
+		conds = append(conds, "h.buried = 0")
+	case BuriedOnly:
+		conds = append(conds, "h.buried = 1")
 	}
 	if len(conds) == 0 {
 		conds = append(conds, "1")

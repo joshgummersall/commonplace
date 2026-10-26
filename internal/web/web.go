@@ -113,6 +113,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /h/{id}", s.handle(s.highlight))
 	mux.HandleFunc("GET /h/{id}/similar", s.handle(s.similar))
 	mux.HandleFunc("POST /h/{id}/favorite", s.handle(s.favorite))
+	mux.HandleFunc("GET /h/{id}/card", s.handle(s.cardView))
+	mux.HandleFunc("GET /h/{id}/bury", s.handle(s.confirmBury))
 	mux.HandleFunc("POST /h/{id}/bury", s.handle(s.bury))
 	mux.HandleFunc("POST /h/{id}/unbury", s.handle(s.unbury))
 	mux.HandleFunc("POST /h/{id}/notes", s.handle(s.addNote))

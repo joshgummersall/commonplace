@@ -150,9 +150,17 @@ func (sr *Searcher) nearest(q Query, qvec []float32) ([]int64, error) {
 			return nil, err
 		}
 	}
+	var buried map[int64]bool
+	if q.Buried != BuriedIncluded {
+		var err error
+		if buried, err = sr.Store.BuriedIDs(); err != nil {
+			return nil, err
+		}
+	}
 	hits, err := sr.Index.Nearest(qvec, SemanticK, func(v store.Vector) bool {
 		return (q.BookID == 0 || v.BookID == q.BookID) && (!q.Favorites || favorites[v.HighlightID]) &&
-			(q.TagID == 0 || tagged[v.HighlightID])
+			(q.TagID == 0 || tagged[v.HighlightID]) &&
+			(q.Buried == BuriedIncluded || buried[v.HighlightID] == (q.Buried == BuriedOnly))
 	})
 	if err != nil {
 		return nil, err

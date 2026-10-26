@@ -82,9 +82,10 @@ func (ix *Index) Nearest(q []float32, k int, keep func(store.Vector) bool) ([]Hi
 }
 
 // Similar returns the highlights nearest to highlight id, split into those
-// from other books and those from the same book, k of each at most. ok is
-// false when id has no vector yet.
-func (ix *Index) Similar(id int64, k int) (other, same []Hit, ok bool, err error) {
+// from other books and those from the same book, k of each at most,
+// considering only those keep accepts (nil keeps all). ok is false when
+// id has no vector yet.
+func (ix *Index) Similar(id int64, k int, keep func(store.Vector) bool) (other, same []Hit, ok bool, err error) {
 	vecs, byID, err := ix.snapshot()
 	if err != nil {
 		return nil, nil, false, err
@@ -95,7 +96,7 @@ func (ix *Index) Similar(id int64, k int) (other, same []Hit, ok bool, err error
 	}
 	self := vecs[i]
 	for _, v := range vecs {
-		if v.HighlightID == id || len(v.Vec) != len(self.Vec) {
+		if v.HighlightID == id || len(v.Vec) != len(self.Vec) || (keep != nil && !keep(v)) {
 			continue
 		}
 		h := Hit{ID: v.HighlightID, BookID: v.BookID, Score: embedding.Dot(self.Vec, v.Vec)}
@@ -137,8 +138,8 @@ type Scored struct {
 
 // SimilarEntries is Similar with each hit loaded as an entry. Hits deleted
 // since the index loaded are left out.
-func (ix *Index) SimilarEntries(id int64, k int) (other, same []Scored, ok bool, err error) {
-	otherHits, sameHits, ok, err := ix.Similar(id, k)
+func (ix *Index) SimilarEntries(id int64, k int, keep func(store.Vector) bool) (other, same []Scored, ok bool, err error) {
+	otherHits, sameHits, ok, err := ix.Similar(id, k, keep)
 	if !ok || err != nil {
 		return nil, nil, ok, err
 	}

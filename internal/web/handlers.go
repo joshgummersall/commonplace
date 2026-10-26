@@ -24,6 +24,8 @@ type card struct {
 	// Detail is set on the quote page, where the notes are already shown
 	// below the card.
 	Detail bool
+	// ConfirmBury asks before burying.
+	ConfirmBury bool
 }
 
 func (s *Server) cards(entries []store.Entry) ([]card, error) {
@@ -108,8 +110,14 @@ type searchPage struct {
 	Fallback string
 }
 
+// Buried reports whether the Buried filter is on.
+func (p searchPage) Buried() bool { return p.Query.Buried == search.BuriedOnly }
+
 func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
-	q := search.Query{Text: r.FormValue("q"), Favorites: r.FormValue("fav") == "1"}
+	q := search.Query{Text: r.FormValue("q"), Favorites: r.FormValue("fav") == "1", Buried: search.BuriedHidden}
+	if r.FormValue("buried") == "1" {
+		q.Buried = search.BuriedOnly
+	}
 	if b := r.FormValue("book"); b != "" {
 		id, err := strconv.ParseInt(b, 10, 64)
 		if err != nil {
@@ -156,7 +164,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		return s.render(w, "results", data)
 	}
 	var err error
-	if data.Books, err = s.store.Books(); err != nil {
+	if data.Books, err = s.store.Books(false); err != nil {
 		return err
 	}
 	if data.Tags, err = s.store.Tags(); err != nil {
@@ -189,6 +197,9 @@ func (s *Server) searchResults(r *http.Request, data *searchPage) error {
 		}
 		if q.Favorites {
 			next.Set("fav", "1")
+		}
+		if q.Buried == search.BuriedOnly {
+			next.Set("buried", "1")
 		}
 		data.Next = "/search?" + next.Encode()
 	}
@@ -268,11 +279,15 @@ func (s *Server) similar(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	var data similarData
+	buried, err := s.store.BuriedIDs()
+	if err != nil {
+		return err
+	}
 	if s.searcher.Index == nil {
 		data.Reason = "Similar highlights need an embedding model; start Ollama and restart cmpl serve."
 		return s.render(w, "similar", data)
 	}
-	other, same, ok, err := s.searcher.Index.SimilarEntries(id, similarK)
+	other, same, ok, err := s.searcher.Index.SimilarEntries(id, similarK, func(v store.Vector) bool { return !buried[v.HighlightID] })
 	if err != nil {
 		return err
 	}
@@ -300,26 +315,63 @@ func (s *Server) favorite(w http.ResponseWriter, r *http.Request) error {
 	return s.render(w, "favorite", c)
 }
 
+// cardFor loads the card a request is about, as the page it is on shows
+// it: detail=1 means the quote page.
+func (s *Server) cardFor(r *http.Request) (card, error) {
+	id, err := pathID(r)
+	if err != nil {
+		return card{}, err
+	}
+	c, err := s.card(id)
+	c.Detail = r.FormValue("detail") == "1"
+	return c, err
+}
+
+// cardView re-renders a card, for cancelling a bury.
+func (s *Server) cardView(w http.ResponseWriter, r *http.Request) error {
+	c, err := s.cardFor(r)
+	if err != nil {
+		return err
+	}
+	return s.render(w, "card", c)
+}
+
+// confirmBury shows the card asking whether to bury the quote.
+func (s *Server) confirmBury(w http.ResponseWriter, r *http.Request) error {
+	c, err := s.cardFor(r)
+	if err != nil {
+		return err
+	}
+	c.ConfirmBury = true
+	return s.render(w, "card", c)
+}
+
+// bury buries a quote. In a list the card gives way to a line with Undo,
+// since buried quotes aren't listed; the quote page keeps the card.
 func (s *Server) bury(w http.ResponseWriter, r *http.Request) error {
-	return s.setBuried(w, r, true)
+	c, err := s.cardFor(r)
+	if err != nil {
+		return err
+	}
+	if err := s.store.SetBuried(c.ID, true); err != nil {
+		return err
+	}
+	if !c.Detail {
+		return s.render(w, "buried", c)
+	}
+	c.Buried = true
+	return s.render(w, "card", c)
 }
 
 func (s *Server) unbury(w http.ResponseWriter, r *http.Request) error {
-	return s.setBuried(w, r, false)
-}
-
-func (s *Server) setBuried(w http.ResponseWriter, r *http.Request, buried bool) error {
-	id, err := pathID(r)
+	c, err := s.cardFor(r)
 	if err != nil {
 		return err
 	}
-	if err := s.store.SetBuried(id, buried); err != nil {
+	if err := s.store.SetBuried(c.ID, false); err != nil {
 		return err
 	}
-	c, err := s.card(id)
-	if err != nil {
-		return err
-	}
+	c.Buried = false
 	return s.render(w, "card", c)
 }
 

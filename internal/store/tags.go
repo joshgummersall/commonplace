@@ -19,7 +19,7 @@ const (
 )
 
 // Tag is a tag as lists show it. Counts leave out highlights you removed
-// it from.
+// it from and buried highlights.
 type Tag struct {
 	ID    int64
 	Name  string
@@ -68,8 +68,8 @@ func CleanTagName(name string) (string, error) {
 // tags loads tag summaries matching where (on tags g), by name.
 func (s *Store) tags(where string, args ...any) ([]Tag, error) {
 	rows, err := s.db.Query(`SELECT g.id, g.name,
-			coalesce(sum(ht.state != 'no'), 0), coalesce(sum(ht.state = 'auto'), 0),
-			count(DISTINCT CASE WHEN ht.state != 'no' THEN h.book_id END)
+			coalesce(sum(ht.state != 'no' AND h.buried = 0), 0), coalesce(sum(ht.state = 'auto' AND h.buried = 0), 0),
+			count(DISTINCT CASE WHEN ht.state != 'no' AND h.buried = 0 THEN h.book_id END)
 		FROM tags g
 		LEFT JOIN highlight_tags ht ON ht.tag_id = g.id
 		LEFT JOIN highlights h ON h.id = ht.highlight_id
@@ -121,7 +121,7 @@ func (s *Store) tagBooks(ids []int64) (map[int64][]BookCount, error) {
 				row_number() OVER (PARTITION BY ht.tag_id
 					ORDER BY count(*) DESC, b.title COLLATE NOCASE) AS pos
 			FROM highlight_tags ht JOIN highlights h ON h.id = ht.highlight_id JOIN books b ON b.id = h.book_id
-			WHERE ht.tag_id IN (`+placeholders(len(ids))+`) AND ht.state != 'no'
+			WHERE ht.tag_id IN (`+placeholders(len(ids))+`) AND ht.state != 'no' AND h.buried = 0
 			GROUP BY ht.tag_id, b.id)
 		WHERE pos <= ? ORDER BY tag_id, pos`, append(int64Args(ids), topBooks)...)
 	if err != nil {
@@ -209,19 +209,20 @@ func (s *Store) TagMemberIDs(id int64) (map[int64]bool, error) {
 	return out, rows.Err()
 }
 
-// UntaggedCount counts highlights with no tag.
+// UntaggedCount counts highlights with no tag, leaving out buried ones.
 func (s *Store) UntaggedCount() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT count(*) FROM highlights
-		WHERE id NOT IN (SELECT highlight_id FROM highlight_tags WHERE state != 'no')`).Scan(&n)
+		WHERE buried = 0 AND id NOT IN (SELECT highlight_id FROM highlight_tags WHERE state != 'no')`).Scan(&n)
 	return n, err
 }
 
 // UnconfirmedCount counts highlights with a suggested tag not yet
-// confirmed.
+// confirmed, leaving out buried ones.
 func (s *Store) UnconfirmedCount() (int, error) {
 	var n int
-	err := s.db.QueryRow(`SELECT count(DISTINCT highlight_id) FROM highlight_tags WHERE state = 'auto'`).Scan(&n)
+	err := s.db.QueryRow(`SELECT count(DISTINCT ht.highlight_id) FROM highlight_tags ht
+		JOIN highlights h ON h.id = ht.highlight_id WHERE ht.state = 'auto' AND h.buried = 0`).Scan(&n)
 	return n, err
 }
 

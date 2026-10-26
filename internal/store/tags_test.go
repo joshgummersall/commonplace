@@ -320,3 +320,31 @@ func TestMigrateThemesToTags(t *testing.T) {
 		t.Errorf("tags = %v, want %v", got, want)
 	}
 }
+
+func TestCountsLeaveOutBuried(t *testing.T) {
+	s := openTemp(t)
+	ids := addHighlights(t, s, 2, "A", "B")
+	if err := s.SeedTags([]SeedTag{{Name: "Risk", Members: ids[:3]}}); err != nil {
+		t.Fatal(err)
+	}
+	// Bury both of book A's highlights, which are tagged.
+	for _, id := range ids[:2] {
+		if err := s.SetBuried(id, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if tag := tagByName(t, s, "Risk"); tag.Count != 1 || tag.Suggested != 1 || tag.Books != 1 || len(tag.TopBooks) != 1 {
+		t.Errorf("tag = %+v, want only book B's one highlight", tag)
+	}
+	if n, _ := s.UntaggedCount(); n != 1 {
+		t.Errorf("untagged = %d, want 1", n)
+	}
+	if n, _ := s.UnconfirmedCount(); n != 1 {
+		t.Errorf("unconfirmed = %d, want 1", n)
+	}
+	books, _ := s.Books(false)
+	all, _ := s.Books(true)
+	if len(books) != 1 || books[0].Title != "B" || len(all) != 2 {
+		t.Errorf("books = %+v without buried, %+v with", books, all)
+	}
+}
