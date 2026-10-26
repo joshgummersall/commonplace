@@ -237,33 +237,30 @@ func TestRootHelp(t *testing.T) {
 	}
 }
 
-func TestThemesCommand(t *testing.T) {
+func TestTagsCommand(t *testing.T) {
 	db := readDB(t)
-	type themesOut struct {
-		RefreshedAt *time.Time `json:"refreshed_at"`
-		Unthemed    int        `json:"unthemed"`
-		Areas       []struct {
+	type tagsOut struct {
+		Untagged int `json:"untagged"`
+		Tags     []struct {
 			ID         int64  `json:"id"`
 			Name       string `json:"name"`
 			Highlights int    `json:"highlights"`
-			Themes     []struct {
-				ID   int64  `json:"id"`
-				Name string `json:"name"`
-			} `json:"themes"`
-		} `json:"areas"`
+			Suggested  int    `json:"suggested"`
+		} `json:"tags"`
 	}
 
-	// Before any refresh.
-	empty := decode[themesOut](t, mustRun(t, "--db", db, "themes"))
-	if empty.RefreshedAt != nil || empty.Areas == nil || len(empty.Areas) != 0 || empty.Unthemed != 10 {
-		t.Errorf("before a refresh: %+v", empty)
+	// Before any tags.
+	empty := decode[tagsOut](t, mustRun(t, "--db", db, "tags"))
+	if empty.Tags == nil || len(empty.Tags) != 0 || empty.Untagged != 10 {
+		t.Errorf("before tags: %+v", empty)
 	}
-	if _, _, err := runCLIWith(t, unavailable{}, "--db", db, "list", "--theme", "1"); err == nil ||
-		!strings.Contains(err.Error(), "no themes yet") {
-		t.Errorf("--theme before a refresh: %v", err)
+	if _, _, err := runCLIWith(t, unavailable{}, "--db", db, "list", "--tag", "1"); err == nil ||
+		!strings.Contains(err.Error(), "no tags yet") {
+		t.Errorf("--tag before tags: %v", err)
 	}
 
-	// One area of six highlights holding one theme of four.
+	// Six highlights suggested "Getting work done"; four of them also
+	// tagged "Weekly review".
 	s, err := store.Open(db)
 	if err != nil {
 		t.Fatal(err)
@@ -276,43 +273,56 @@ func TestThemesCommand(t *testing.T) {
 		ids = append(ids, id)
 	}
 	rows.Close()
-	area := store.Area{Theme: store.Theme{Name: "Getting work done", Members: ids}}
-	area.Themes = []store.Theme{{Name: "Weekly review", Members: ids[:4]}}
-	if err := s.ReplaceThemes([]store.Area{area}, store.ThemeRefresh{At: time.Now(), Highlights: 10}); err != nil {
+	if err := s.SeedTags([]store.SeedTag{{Name: "Getting work done", Members: ids}}); err != nil {
 		t.Fatal(err)
+	}
+	for _, id := range ids[:4] {
+		if err := s.SetTags(id, []string{"Getting work done", "Weekly review"}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	s.Close()
 
-	got := decode[themesOut](t, mustRun(t, "--db", db, "themes"))
-	if got.RefreshedAt == nil || got.Unthemed != 4 || len(got.Areas) != 1 || got.Areas[0].Highlights != 6 ||
-		len(got.Areas[0].Themes) != 1 || got.Areas[0].Themes[0].Name != "Weekly review" {
-		t.Fatalf("themes = %+v", got)
+	got := decode[tagsOut](t, mustRun(t, "--db", db, "tags"))
+	if got.Untagged != 4 || len(got.Tags) != 2 || got.Tags[0].Highlights != 6 || got.Tags[0].Suggested != 2 ||
+		got.Tags[1].Name != "Weekly review" || got.Tags[1].Highlights != 4 {
+		t.Fatalf("tags = %+v", got)
 	}
-	themeID := got.Areas[0].Themes[0].ID
+	weekly := got.Tags[1].ID
 
-	// --theme takes an id or part of a name, and highlights name their theme.
-	byID := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--theme", fmt.Sprint(themeID)))
-	byName := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--theme", "weekly"))
+	// --tag takes an id or part of a name, and highlights list their tags.
+	byID := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--tag", fmt.Sprint(weekly)))
+	byName := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--tag", "weekly"))
 	if byID.Total != 4 || byName.Total != 4 {
-		t.Errorf("--theme: %d by id, %d by name, want 4", byID.Total, byName.Total)
+		t.Errorf("--tag: %d by id, %d by name, want 4", byID.Total, byName.Total)
 	}
 	for _, h := range byID.Results {
-		if h.Theme == nil || h.Theme.ID != themeID {
-			t.Errorf("highlight %d theme = %+v, want %d", h.ID, h.Theme, themeID)
+		if len(h.Tags) != 2 || h.Tags[1].ID != weekly || h.Tags[0].Suggested {
+			t.Errorf("highlight %d tags = %+v, want both, confirmed", h.ID, h.Tags)
 		}
 	}
-	if area := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--theme", "getting work")); area.Total != 6 {
-		t.Errorf("--theme for the area: %d, want 6", area.Total)
+	work := decode[pageJSON](t, mustRun(t, "--db", db, "list", "--tag", "getting work"))
+	if work.Total != 6 {
+		t.Errorf("--tag getting work: %d, want 6", work.Total)
+	}
+	suggested := 0
+	for _, h := range work.Results {
+		if len(h.Tags) == 1 && h.Tags[0].Suggested {
+			suggested++
+		}
+	}
+	if suggested != 2 {
+		t.Errorf("%d highlights marked suggested, want 2", suggested)
 	}
 
 	for _, tt := range []struct{ arg, want string }{
-		{"999", "no theme with id 999"},
-		{"astronomy", `no theme name contains "astronomy"`},
-		{"e", `"e" matches 2 themes`},
+		{"999", "no tag with id 999"},
+		{"astronomy", `no tag name contains "astronomy"`},
+		{"e", `"e" matches 2 tags`},
 	} {
-		if _, _, err := runCLIWith(t, unavailable{}, "--db", db, "list", "--theme", tt.arg); err == nil ||
+		if _, _, err := runCLIWith(t, unavailable{}, "--db", db, "list", "--tag", tt.arg); err == nil ||
 			!strings.Contains(err.Error(), tt.want) {
-			t.Errorf("--theme %s: %v, want %q", tt.arg, err, tt.want)
+			t.Errorf("--tag %s: %v, want %q", tt.arg, err, tt.want)
 		}
 	}
 }

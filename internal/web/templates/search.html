@@ -3,25 +3,16 @@
   hx-get="/search" hx-target="#results" hx-push-url="true"
   hx-trigger="input changed delay:150ms from:#q, change from:select, change from:#fav, submit">
   <input id="q" name="q" type="search" value="{{.Query.Text}}" placeholder="Search highlights and notes"
-    aria-label="Search" autocomplete="off"{{if not .Theme}} autofocus{{end}}>
+    aria-label="Search" autocomplete="off"{{if not .Tag}} autofocus{{end}}>
   <div class="filters">
     <select name="book" aria-label="Book">
       <option value="">All books</option>
       {{range .Books}}<option value="{{.ID}}"{{if eq .ID $.Query.BookID}} selected{{end}}>{{.Title}} ({{.Count}})</option>{{end}}
     </select>
-    {{if .Areas}}
-    <select name="theme" aria-label="Theme">
-      <option value="">All themes</option>
-      {{range .Areas}}
-      {{if .Themes}}
-      <optgroup label="{{.Name}}">
-        <option value="{{.ID}}"{{if eq .ID $.Query.ThemeID}} selected{{end}}>All of {{.Name}}</option>
-        {{range .Themes}}<option value="{{.ID}}"{{if eq .ID $.Query.ThemeID}} selected{{end}}>{{.Name}}</option>{{end}}
-      </optgroup>
-      {{else}}
-      <option value="{{.ID}}"{{if eq .ID $.Query.ThemeID}} selected{{end}}>{{.Name}}</option>
-      {{end}}
-      {{end}}
+    {{if .Tags}}
+    <select name="tag" aria-label="Tag">
+      <option value="">All tags</option>
+      {{range .Tags}}<option value="{{.ID}}"{{if eq .ID $.Query.TagID}} selected{{end}}>{{.Name}} ({{.Count}})</option>{{end}}
     </select>
     {{end}}
     <label class="check"><input id="fav" type="checkbox" name="fav" value="1"{{if .Query.Favorites}} checked{{end}}> ★ Favorites</label>
@@ -31,12 +22,11 @@
 {{template "foot" .}}
 
 {{define "results"}}
-  {{with .Theme}}
-  <header class="theme-filter">
-    <p class="theme-kind">{{if .Area}}Theme in <a href="/search?theme={{.Area.ID}}">{{.Area.Name}}</a>{{else}}Area{{end}} · <a href="/themes">All themes</a></p>
+  {{with .Tag}}
+  <header class="tag-filter">
+    <p class="tag-kind">Tag · <a href="/tags">All tags</a></p>
     <h1>{{.Name}}</h1>
-    <p class="theme-count">{{.Count}} highlights from {{.Books}} books. With no search words, the most typical come first.</p>
-    {{with .Related}}<p class="related">{{if $.Theme.Area}}Related{{else}}Themes in it{{end}}: {{range $i, $t := .}}{{if $i}} · {{end}}<a href="/search?theme={{$t.ID}}">{{$t.Name}}</a>{{end}}</p>{{end}}
+    <p class="tag-count">{{.Count}} {{plural .Count "highlight" "highlights"}} from {{.Books}} {{plural .Books "book" "books"}}.{{if .Suggested}} {{.Suggested}} {{plural .Suggested "is suggested and looks" "are suggested and look"}} muted; <kbd>T</kbd> confirms, <kbd>t</kbd> edits.{{end}}</p>
   </header>
   {{end}}
   {{if .Results}}
@@ -46,7 +36,7 @@
     {{template "results-page" .}}
   </div>
   {{else}}
-  <p class="empty">{{if or .Query.Text .Query.BookID .Query.ThemeID}}No highlights match.{{else if .Query.Favorites}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights yet. Import them with <code>cmpl import</code>.{{end}}</p>
+  <p class="empty">{{if or .Query.Text .Query.BookID .Query.TagID}}No highlights match.{{else if .Query.Favorites}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights yet. Import them with <code>cmpl import</code>.{{end}}</p>
   {{with .Fallback}}<p class="fallback">Keyword matches only: {{.}}.</p>{{end}}
   {{end}}
 {{end}}

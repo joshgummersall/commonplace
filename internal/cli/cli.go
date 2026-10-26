@@ -110,10 +110,10 @@ The library:
              them.
   buried     A highlight hidden from the daily set. It still appears in
              list and search, marked "buried".
-  theme      A group of highlights that say related things, usually across
-             books, found and named in the web app. Broad areas hold
-             specific themes; cmpl themes lists them, and --theme filters
-             to one.
+  tag        A label on highlights, set in the web app. The app suggests
+             tags from what similar highlights carry; a suggestion stays
+             marked until it is confirmed. cmpl tags lists them, and --tag
+             filters to one.
 
 Every read command prints JSON and takes ids from the others' output. A typical session:
 
@@ -122,9 +122,9 @@ Every read command prints JSON and takes ids from the others' output. A typical 
   cmpl show 412                   one highlight in full, with notes
   cmpl similar 412                highlights close in meaning to it
   cmpl books                      book ids, for --book
-  cmpl themes                     theme ids, for --theme
+  cmpl tags                       tag ids, for --tag
 
-Read commands never change highlights, notes, favorites, or burials. Run
+Read commands never change highlights, notes, tags, favorites, or burials. Run
 cmpl help <command> for each command's flags, output, and examples.
 
 The database is $XDG_DATA_HOME/commonplace/commonplace.db
@@ -147,7 +147,7 @@ unless overridden by $` + dbEnvVar + ` or --db.`,
 		a.newShowCommand(),
 		a.newSimilarCommand(),
 		a.newBooksCommand(),
-		a.newThemesCommand(),
+		a.newTagsCommand(),
 	}
 	manage := []*cobra.Command{
 		a.newImportCommand(),

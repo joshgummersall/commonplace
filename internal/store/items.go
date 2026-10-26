@@ -1,17 +1,17 @@
 package store
 
 // Item is a highlight with what a list shows beside it: how many notes it
-// has and the most specific theme it is in. The CLI and the web app both
-// build their output from it.
+// has and its tags. The CLI and the web app both build their output from
+// it.
 type Item struct {
 	Entry
 	NoteCount int
-	Theme     *ThemeRef // nil when the highlight is in no theme
+	Tags      []TagRef
 	// Notes is set only when Items is asked for them.
 	Notes []Note
 }
 
-// Items adds note counts and themes to entries, in order. withNotes also
+// Items adds note counts and tags to entries, in order. withNotes also
 // loads each highlight's notes in full.
 func (s *Store) Items(entries []Entry, withNotes bool) ([]Item, error) {
 	ids := make([]int64, len(entries))
@@ -22,16 +22,13 @@ func (s *Store) Items(entries []Entry, withNotes bool) ([]Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	themes, err := s.ThemesOf(ids)
+	tags, err := s.TagsOf(ids)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Item, len(entries))
 	for i, e := range entries {
-		out[i] = Item{Entry: e, NoteCount: counts[e.ID]}
-		if t, ok := themes[e.ID]; ok {
-			out[i].Theme = &t
-		}
+		out[i] = Item{Entry: e, NoteCount: counts[e.ID], Tags: tags[e.ID]}
 		if withNotes {
 			if out[i].Notes, err = s.Notes(e.ID); err != nil {
 				return nil, err
@@ -41,7 +38,7 @@ func (s *Store) Items(entries []Entry, withNotes bool) ([]Item, error) {
 	return out, nil
 }
 
-// Item loads one highlight with its note count and theme, or returns
+// Item loads one highlight with its note count and tags, or returns
 // ErrNotFound.
 func (s *Store) Item(id int64, withNotes bool) (Item, error) {
 	e, err := s.Entry(id)

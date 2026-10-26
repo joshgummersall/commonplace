@@ -1,7 +1,7 @@
 // Vim-style keyboard control. Everything else is htmx attributes in the
 // templates.
 //
-// Selectable things carry [data-item] ("quote", "note", or "theme"); their controls
+// Selectable things carry [data-item] ("quote", "note", or "tag"); their controls
 // carry [data-action], which keys trigger by clicking, so a key and a
 // mouse click run the same htmx request. The keymap and help text both
 // come from KEYS below.
@@ -11,8 +11,7 @@
   let current = -1;
   const storeKey = "cmpl:selected:" + location.pathname + location.search;
 
-  // Items inside a closed area on the Themes page are skipped.
-  const items = () => [...document.querySelectorAll("main [data-item]")].filter((el) => !el.closest("[hidden]"));
+  const items = () => [...document.querySelectorAll("main [data-item]")];
 
   function paint() {
     items().forEach((el, i) => el.classList.toggle("is-current", i === current));
@@ -114,72 +113,6 @@
       .finally(() => (undoing = false));
   }
 
-  // ---- folds (Themes page) ---------------------------------------------
-
-  // Open areas are remembered for the session, so coming back from a
-  // theme finds the page as it was left.
-  const foldKey = "cmpl:open-areas";
-
-  function openAreas() {
-    try {
-      return new Set(JSON.parse(sessionStorage.getItem(foldKey)) || []);
-    } catch {
-      return new Set();
-    }
-  }
-
-  function paintFold(id, open) {
-    const list = document.getElementById(`area-${id}-themes`);
-    if (!list) return false;
-    list.hidden = !open;
-    document.querySelector(`#theme-${id} [data-action="fold"]`)?.setAttribute("aria-expanded", String(open));
-    return true;
-  }
-
-  function applyFolds() {
-    const open = openAreas();
-    document.querySelectorAll("[data-area]").forEach((el) => paintFold(el.dataset.area, open.has(el.dataset.area)));
-  }
-
-  // setFolds opens or closes areas, keeping the same row selected (or
-  // its area, if the row was folded away).
-  function setFolds(ids, open) {
-    const el = current >= 0 ? items()[current] : null;
-    const saved = openAreas();
-    for (const id of ids) {
-      if (paintFold(id, open)) open ? saved.add(id) : saved.delete(id);
-    }
-    try {
-      sessionStorage.setItem(foldKey, JSON.stringify([...saved]));
-    } catch {}
-    if (!el) return;
-    const keep = el.closest("[hidden]") ? el.closest(".area").querySelector("[data-area]") : el;
-    select(items().indexOf(keep));
-  }
-
-  // The area of the selected row: the row itself, or the area it is in.
-  function currentArea() {
-    const el = selected("theme");
-    return el?.dataset.area ? el : el?.closest(".area")?.querySelector("[data-area]");
-  }
-
-  function fold(mode) {
-    const area = currentArea();
-    const list = area && document.getElementById(`area-${area.dataset.area}-themes`);
-    if (!list) return message(area ? "No themes inside" : "Select an area");
-    setFolds([area.dataset.area], mode === "toggle" ? list.hidden : mode === "open");
-  }
-
-  const foldAll = (open) => setFolds([...document.querySelectorAll("[data-area]")].map((el) => el.dataset.area), open);
-
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest('[data-action="fold"]');
-    if (!btn) return;
-    const row = btn.closest("[data-area]");
-    const list = document.getElementById(`area-${row.dataset.area}-themes`);
-    setFolds([row.dataset.area], list.hidden);
-  });
-
   // ---- commands --------------------------------------------------------
 
   const halfPage = () => {
@@ -267,29 +200,26 @@
     [["C-u"], "Half a page up", () => select(Math.max(current, 0) - halfPage())],
     [["zz"], "Center selection", () => select(Math.max(current, 0), { scroll: "center" })],
     ["Go"],
-    [["o", "Enter", "l"], "Open quote and notes, or a theme's highlights", open],
+    [["o", "Enter", "l"], "Open quote and notes, or a tag's highlights", open],
     [["h", "C-o"], "Back", () => history.back()],
     [["gd"], "Daily", () => (location.href = "/")],
     [["gs", "/"], "Search", search],
     [["gf", "F"], "Favorites: toggle the filter on Search", toggleFavorites],
-    [["gt"], "Themes", () => (location.href = "/themes")],
-    [["t"], "The quote's theme", () => act("theme", "quote") || message("Not in a theme")],
+    [["gt"], "Tags", () => (location.href = "/tags")],
     ["Act"],
     [["f"], "Favorite", () => act("favorite", "quote")],
     [["b"], "Bury / unbury: hide from Daily, keep in Search", bury],
-    [["x", "dd"], "Delete selected note", () => act("delete", "note")],
+    [["x", "dd"], "Delete selected note or tag", () => act("delete", "note") || act("delete", "tag")],
     [["u"], "Undo", undo],
     [["yy"], "Copy quote with source", yank],
     [["s"], "More like this", () => similarPanel() || act("similar", "quote")],
     [["i", "a"], "Write a note", writeNote],
-    [["cc"], "Edit selected note, or rename theme", () => act("edit", "note") || act("edit", "theme")],
-    ["Themes"],
-    [["za"], "Open or close the area", () => fold("toggle")],
-    [["zo"], "Open the area", () => fold("open")],
-    [["zc"], "Close the area", () => fold("close")],
-    [["zR"], "Open every area", () => foldAll(true)],
-    [["zM"], "Close every area", () => foldAll(false)],
-    [["R"], "Refresh themes", () => document.querySelector('[data-action="refresh"]')?.click()],
+    [["cc"], "Edit selected note, or rename a tag", () => act("edit", "note") || act("edit", "tag")],
+    [["m"], "Merge the selected tag into another", () => act("merge", "tag")],
+    ["Tags"],
+    [["t"], "Edit the quote's tags", () => act("tag", "quote")],
+    [["T"], "Confirm the quote's suggested tags", () => act("confirm-tags", "quote") || message("No suggested tags")],
+    [["R"], "Suggest tags, when there are none yet", () => document.querySelector('[data-action="seed"]')?.click()],
     [["?"], "Toggle this help", () => toggleHelp()],
   ];
 
@@ -320,6 +250,113 @@
     }
   }
 
+  // ---- tag completion ------------------------------------------------
+
+  // While you type a tag (the text after the last comma), a list under the
+  // input shows existing tags that match, names starting with the text
+  // first. Tags already typed are left out.
+
+  function tagSegments(input) {
+    const parts = input.value.split(",");
+    const typed = parts.pop().trim();
+    return { parts: parts.map((p) => p.trim()).filter(Boolean), typed };
+  }
+
+  function tagMatches(input) {
+    let names;
+    try {
+      names = JSON.parse(input.form.dataset.tagNames);
+    } catch {
+      return [];
+    }
+    const { parts, typed } = tagSegments(input);
+    const q = typed.toLowerCase();
+    if (!q) return [];
+    const have = new Set(parts.map((p) => p.toLowerCase()));
+    const fresh = names.filter((n) => !have.has(n.toLowerCase()));
+    const starts = fresh.filter((n) => n.toLowerCase().startsWith(q));
+    const inside = fresh.filter((n) => !n.toLowerCase().startsWith(q) && n.toLowerCase().includes(q));
+    const out = [...starts, ...inside].slice(0, 8);
+    // Nothing to offer when the text already is the only match.
+    return out.length === 1 && out[0].toLowerCase() === q ? [] : out;
+  }
+
+  function completionList(input) {
+    let list = input.form.querySelector(".tag-complete");
+    if (!list) {
+      list = document.createElement("ul");
+      list.className = "tag-complete";
+      list.setAttribute("role", "listbox");
+      list.hidden = true;
+      list.addEventListener("mousedown", (e) => {
+        const li = e.target.closest("li");
+        if (!li) return;
+        e.preventDefault(); // keep focus in the input
+        acceptTag(input, li.textContent);
+      });
+      input.after(list);
+    }
+    return list;
+  }
+
+  function showCompletions(input) {
+    const list = completionList(input);
+    const matches = tagMatches(input);
+    list.replaceChildren(
+      ...matches.map((name, i) => {
+        const li = document.createElement("li");
+        li.textContent = name;
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", String(i === 0));
+        return li;
+      }),
+    );
+    list.hidden = matches.length === 0;
+  }
+
+  // openCompletions returns the shown list, or null.
+  function openCompletions(input) {
+    const list = input.form.querySelector(".tag-complete");
+    return list && !list.hidden ? list : null;
+  }
+
+  function moveCompletion(list, by) {
+    const items = [...list.children];
+    const at = items.findIndex((li) => li.getAttribute("aria-selected") === "true");
+    const next = (at + by + items.length) % items.length;
+    items.forEach((li, i) => li.setAttribute("aria-selected", String(i === next)));
+  }
+
+  function acceptTag(input, name) {
+    input.value = [...tagSegments(input).parts, name].join(", ") + ", ";
+    showCompletions(input);
+  }
+
+  document.addEventListener("input", (e) => {
+    if (e.target.matches?.("[data-complete-tags]")) showCompletions(e.target);
+  });
+
+  // completionKey handles a key in a tag input while matches are shown,
+  // and reports whether it did.
+  function completionKey(e, input) {
+    const list = openCompletions(input);
+    if (!list) return false;
+    const key = keyName(e);
+    if (key === "Tab") {
+      acceptTag(input, list.querySelector('[aria-selected="true"]').textContent);
+    } else if (key === "ArrowDown" || key === "C-n") {
+      moveCompletion(list, 1);
+    } else if (key === "ArrowUp" || key === "C-p") {
+      moveCompletion(list, -1);
+    } else if (key === "Escape") {
+      list.hidden = true;
+    } else {
+      return false;
+    }
+    e.preventDefault();
+    return true;
+  }
+
   // ---- key handling ----------------------------------------------------
 
   let seq = "";
@@ -340,9 +377,15 @@
   document.addEventListener("keydown", (e) => {
     const t = e.target;
 
-    // Insert mode: only Esc and save are ours.
+    // Insert mode: only Esc, save, and tag completion are ours.
     if (typing(t)) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && t.tagName === "TEXTAREA") {
+      if (t.matches("[data-complete-tags]") && !e.shiftKey && completionKey(e, t)) {
+        // Handled.
+      } else if (e.key === "Enter" && t.matches("select[data-submit-on-enter]")) {
+        // Browsers don't submit a form on Enter in a select.
+        e.preventDefault();
+        t.form?.requestSubmit();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && t.tagName === "TEXTAREA") {
         e.preventDefault();
         t.form?.requestSubmit();
       } else if (e.key === "Escape") {
@@ -364,6 +407,7 @@
     if (e.key === "Escape") {
       reset();
       toggleHelp(false);
+      document.querySelector('main .is-confirming [data-action="cancel"]')?.click();
       return;
     }
     const key = keyName(e);
@@ -402,10 +446,9 @@
   });
   document.addEventListener("htmx:sendError", () => message("Can't reach cmpl serve"));
 
-  // htmx replaces items on favorite, bury, note edits, and renames; keep
-  // the selection on the same position.
+  // htmx replaces items on favorite, bury, note and tag edits, and
+  // renames; keep the selection on the same position.
   document.addEventListener("htmx:afterSettle", (e) => {
-    applyFolds();
     // Arriving from "More like this" on another page: select the first
     // similar highlight once the panel has loaded.
     if (e.target.classList?.contains("similar-body") && location.hash === "#similar") similarPanel();
@@ -420,7 +463,6 @@
   });
 
   renderHelp();
-  applyFolds();
   if (location.hash === "#write") {
     document.getElementById("write")?.focus();
   } else {

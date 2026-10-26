@@ -159,6 +159,8 @@ button, .button {
   align-items: center;
 }
 button:hover, .button:hover { border-color: var(--muted); }
+/* The display above would otherwise beat the hidden attribute. */
+button[hidden] { display: none; }
 button[type="submit"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 button.link {
   border: 0;
@@ -268,9 +270,9 @@ textarea { padding: 0.75rem; line-height: 1.5; resize: vertical; }
 .similar-item blockquote { font-size: 1rem; line-height: 1.55; }
 .similar-item .meta { margin-top: 0.375rem; font-size: 0.8125rem; }
 
-/* Themes */
+/* Tags */
 
-.refresh {
+.seed {
   border: 1px solid var(--rule);
   border-radius: 10px;
   background: var(--surface);
@@ -278,17 +280,16 @@ textarea { padding: 0.75rem; line-height: 1.5; resize: vertical; }
   margin-bottom: 1.5rem;
   font-size: 0.9375rem;
 }
-.refresh p { margin: 0 0 0.5rem; }
-.refresh p:last-child { margin-bottom: 0; }
-.refresh.is-running { border-color: var(--accent); }
-.refresh-action { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
-.refresh-action p { flex: 1 1 16rem; margin: 0; }
+.seed p { margin: 0 0 0.5rem; }
+.seed p:last-child { margin-bottom: 0; }
+.seed.is-running { border-color: var(--accent); }
+.seed-action { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.seed-action p { flex: 1 1 16rem; margin: 0; }
 .hint-text { font-size: 0.8125rem; color: var(--muted); }
-.refresh-state { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
-.refresh-ok strong { color: var(--accent); }
-.refresh-error, .refresh-lost { color: var(--danger); }
-.refresh-last { color: var(--muted); }
-.refresh progress { width: 100%; accent-color: var(--accent); margin: 0.25rem 0 0.5rem; }
+.seed-state { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+.seed-ok strong { color: var(--accent); }
+.seed-error { color: var(--danger); }
+.seed progress { width: 100%; accent-color: var(--accent); margin: 0.25rem 0 0.5rem; }
 
 .spinner {
   width: 0.875rem;
@@ -302,31 +303,29 @@ textarea { padding: 0.75rem; line-height: 1.5; resize: vertical; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
 
-.areas { display: flex; flex-direction: column; gap: 0.5rem; }
-.area {
+.tag-list {
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: 10px;
   overflow: hidden;
 }
-.area-themes { border-top: 1px solid var(--rule); padding: 0.25rem 0; }
-
-.theme-row {
+.tag-row {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
   padding: 0.625rem 0.75rem;
   border-left: 3px solid transparent;
 }
-.theme-row:focus { outline: none; }
-.theme-row.is-current { border-left-color: var(--accent); background: var(--accent-soft); }
-.area-themes .theme-row { padding-left: 2.25rem; }
-.theme-main { flex: 1; min-width: 0; }
-.theme-name { color: var(--text); text-decoration: none; font-weight: 600; }
-.is-area > .theme-main .theme-name { font-family: var(--serif); font-size: 1.125rem; }
-.theme-name:hover { text-decoration: underline; }
-.theme-count { font-size: 0.8125rem; color: var(--muted); margin-left: 0.5rem; white-space: nowrap; }
-.theme-books {
+.tag-row + .tag-row, .tag-deleted + .tag-row, .tag-row + .tag-deleted { border-top: 1px solid var(--rule); }
+.tag-row:focus { outline: none; }
+.tag-row.is-current { border-left-color: var(--accent); background: var(--accent-soft); }
+.tag-row.is-confirming { border-left-color: var(--danger); }
+.tag-row.is-confirming p { margin: 0 0 0.5rem; }
+.tag-main { flex: 1; min-width: 0; }
+.tag-name { color: var(--text); text-decoration: none; font-weight: 600; }
+.tag-name:hover { text-decoration: underline; }
+.tag-count { font-size: 0.8125rem; color: var(--muted); margin-left: 0.5rem; white-space: nowrap; }
+.tag-books {
   margin: 0.125rem 0 0;
   font-size: 0.8125rem;
   color: var(--muted);
@@ -334,22 +333,13 @@ textarea { padding: 0.75rem; line-height: 1.5; resize: vertical; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.theme-row .rename { font-size: 0.8125rem; visibility: hidden; flex: none; margin-top: 0.25rem; }
-.theme-row:hover .rename, .theme-row.is-current .rename, .theme-row .rename:focus-visible { visibility: visible; }
+.tag-actions { display: flex; gap: 0.75rem; flex: none; margin-top: 0.25rem; font-size: 0.8125rem; visibility: hidden; }
+.tag-row:hover .tag-actions, .tag-row.is-current .tag-actions, .tag-actions :focus-visible { visibility: visible; }
+.tag-deleted { margin: 0; padding: 0.625rem 0.75rem; font-size: 0.875rem; color: var(--muted); }
+button.danger { color: var(--danger); border-color: var(--danger); }
 
-.fold, .fold-spacer { flex: none; width: 1.5rem; }
-.fold {
-  min-height: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  border: 0;
-  justify-content: center;
-  color: var(--muted);
-}
-.fold span[aria-hidden] { display: inline-block; transition: transform 120ms; }
-.fold[aria-expanded="true"] span[aria-hidden] { transform: rotate(90deg); }
-
-.theme-rename input {
+.tag-merge select { margin-left: 0.5rem; max-width: 100%; }
+.tag-rename input, .tags-edit input {
   font: inherit;
   color: var(--text);
   background: var(--bg);
@@ -359,17 +349,51 @@ textarea { padding: 0.75rem; line-height: 1.5; resize: vertical; }
   width: 100%;
 }
 
-.unthemed { font-size: 0.875rem; margin-top: 1.25rem; }
-/* The empty state is moot once a first refresh has started. */
-.refresh.is-running ~ .empty { display: none; }
+.untagged { font-size: 0.875rem; margin-top: 1.25rem; }
+/* The empty state is moot once suggesting has started. */
+.seed.is-running ~ .empty { display: none; }
 
-.theme-filter { margin-bottom: 1.25rem; }
-.theme-filter h1 { font-family: var(--serif); font-size: 1.75rem; font-weight: 600; margin: 0.25rem 0; }
-.theme-kind, .theme-filter .theme-count, .related { font-size: 0.875rem; color: var(--muted); margin: 0; }
-.theme-filter .theme-count { margin: 0 0 0.25rem; white-space: normal; }
+.tag-filter { margin-bottom: 1.25rem; }
+.tag-filter h1 { font-family: var(--serif); font-size: 1.75rem; font-weight: 600; margin: 0.25rem 0; }
+.tag-kind, .tag-filter .tag-count { font-size: 0.875rem; color: var(--muted); margin: 0; }
+.tag-filter .tag-count { margin: 0 0 0.25rem; white-space: normal; }
 
-.theme-link { flex-basis: 100%; font-size: 0.8125rem; }
-.theme-link a { color: var(--muted); }
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+}
+.card-tags button.link { font-size: 0.8125rem; color: var(--muted); }
+.tag {
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.0625rem 0.5rem;
+}
+.tag:hover { border-color: var(--accent); }
+/* A suggestion is the app's guess until you confirm it. */
+.tag.is-suggested { color: var(--muted); border-style: dashed; }
+.tags-edit { display: block; position: relative; }
+.tag-complete {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.2);
+  font-size: 0.875rem;
+}
+.tag-complete li { padding: 0.25rem 0.625rem; cursor: pointer; }
+.tag-complete li[aria-selected="true"] { background: var(--accent-soft); color: var(--text); }
 
 /* Keyboard */
 

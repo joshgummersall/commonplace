@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/joshgummersall/commonplace/internal/autotag"
 	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/search"
 	"github.com/joshgummersall/commonplace/internal/store"
-	"github.com/joshgummersall/commonplace/internal/themes"
 )
 
 //go:embed templates static
@@ -34,8 +34,9 @@ type Server struct {
 	// embedModel names the embeddings Daily uses to vary its set; "" when
 	// there is no embedder.
 	embedModel string
-	// themes refreshes themes; nil without an embedder and a namer.
-	themes *themes.Refresher
+	// seeder suggests a first set of tags; nil without an embedder and a
+	// namer.
+	seeder *autotag.Seeder
 	logger *slog.Logger
 	now    func() time.Time
 	files  fs.FS
@@ -54,8 +55,9 @@ type Options struct {
 	// Embedder enables semantic search and similar highlights. Without
 	// it, search is keyword only.
 	Embedder embedding.Embedder
-	// Namer names themes. With Embedder, it enables refreshing themes.
-	Namer  themes.Namer
+	// Namer names suggested tags. With Embedder, it enables suggesting a
+	// first set of tags.
+	Namer  autotag.Namer
 	Logger *slog.Logger
 	Now    func() time.Time
 }
@@ -74,7 +76,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 		srv.now = time.Now
 	}
 	if opts.Embedder != nil && opts.Namer != nil {
-		srv.themes = themes.NewRefresher(s, opts.Embedder.Model(), opts.Namer, srv.now, srv.logger)
+		srv.seeder = autotag.NewSeeder(s, opts.Embedder.Model(), opts.Namer, srv.now, srv.logger)
 	}
 	if opts.DevDir != "" {
 		srv.files = os.DirFS(opts.DevDir)
@@ -119,12 +121,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /notes/{id}", s.handle(s.updateNote))
 	mux.HandleFunc("DELETE /notes/{id}", s.handle(s.deleteNote))
 	mux.HandleFunc("POST /notes/{id}/restore", s.handle(s.restoreNote))
-	mux.HandleFunc("GET /themes", s.handle(s.themeList))
-	mux.HandleFunc("GET /themes/refresh", s.handle(s.refreshStatus))
-	mux.HandleFunc("POST /themes/refresh", s.handle(s.refreshThemes))
-	mux.HandleFunc("GET /themes/{id}", s.handle(s.themeRow))
-	mux.HandleFunc("GET /themes/{id}/rename", s.handle(s.renameForm))
-	mux.HandleFunc("PUT /themes/{id}", s.handle(s.renameTheme))
+	mux.HandleFunc("GET /h/{id}/tags", s.handle(s.highlightTags))
+	mux.HandleFunc("GET /h/{id}/tags/edit", s.handle(s.editTags))
+	mux.HandleFunc("PUT /h/{id}/tags", s.handle(s.saveTags))
+	mux.HandleFunc("POST /h/{id}/tags/confirm", s.handle(s.confirmTags))
+	mux.HandleFunc("GET /tags", s.handle(s.tagList))
+	mux.HandleFunc("GET /tags/seed", s.handle(s.seedStatus))
+	mux.HandleFunc("POST /tags/seed", s.handle(s.startSeed))
+	mux.HandleFunc("GET /tags/{id}", s.handle(s.tagRow))
+	mux.HandleFunc("GET /tags/{id}/rename", s.handle(s.renameForm))
+	mux.HandleFunc("PUT /tags/{id}", s.handle(s.renameTag))
+	mux.HandleFunc("GET /tags/{id}/merge", s.handle(s.mergeForm))
+	mux.HandleFunc("POST /tags/{id}/merge", s.handle(s.mergeTag))
+	mux.HandleFunc("GET /tags/{id}/delete", s.handle(s.deleteForm))
+	mux.HandleFunc("DELETE /tags/{id}", s.handle(s.deleteTag))
 
 	return http.NewCrossOriginProtection().Handler(mux)
 }
@@ -252,6 +262,15 @@ var funcs = template.FuncMap{
 			return 0
 		}
 		return 100 * done / total
+	},
+	// suggested reports whether any of a quote's tags awaits confirming.
+	"suggested": func(tags []store.TagRef) bool {
+		for _, t := range tags {
+			if t.Suggested {
+				return true
+			}
+		}
+		return false
 	},
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
