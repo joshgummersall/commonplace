@@ -76,12 +76,15 @@ func (sr *Searcher) Run(ctx context.Context, q Query, mode Mode) (Page, error) {
 	}
 	qvec, err := sr.embedQuery(ctx, q.Text)
 	if err != nil {
-		var unavailable *ollama.UnavailableError
-		if !errors.As(err, &unavailable) {
+		if !errors.Is(err, ollama.ErrUnavailable) {
 			return Page{}, err
 		}
 		p, kerr := sr.keyword(q)
-		p.Fallback = unavailable.Reason
+		p.Fallback = err.Error()
+		var unavailable *ollama.UnavailableError
+		if errors.As(err, &unavailable) {
+			p.Fallback = unavailable.Reason
+		}
 		return p, kerr
 	}
 	semantic, err := sr.nearest(q, qvec)

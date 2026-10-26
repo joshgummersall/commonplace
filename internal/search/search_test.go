@@ -200,6 +200,16 @@ func TestRunFallsBackToKeyword(t *testing.T) {
 		}
 	})
 
+	// An embedder may wrap the sentinel without a reason of its own; the
+	// whole message then serves as the reason.
+	t.Run("wrapped sentinel", func(t *testing.T) {
+		sr, _ := newSearcher(t, wrapped{}, library)
+		p, err := sr.Run(ctx, Query{Text: "luck"}, ModeHybrid)
+		if err != nil || len(p.Results) != 1 || p.Fallback != "model unavailable: GPU is busy" {
+			t.Errorf("results %q, fallback %q, err %v", texts(p), p.Fallback, err)
+		}
+	})
+
 	t.Run("real errors still fail", func(t *testing.T) {
 		sr, _ := newSearcher(t, failing{}, library)
 		if _, err := sr.Run(ctx, Query{Text: "luck"}, ModeHybrid); err == nil || errors.Is(err, ollama.ErrUnavailable) {
@@ -209,6 +219,12 @@ func TestRunFallsBackToKeyword(t *testing.T) {
 }
 
 type failing struct{ conceptEmbedder }
+
+type wrapped struct{ conceptEmbedder }
+
+func (wrapped) EmbedQuery(context.Context, string) ([]float32, error) {
+	return nil, fmt.Errorf("%w: GPU is busy", ollama.ErrUnavailable)
+}
 
 func (failing) EmbedQuery(context.Context, string) ([]float32, error) {
 	return nil, errors.New("model crashed")

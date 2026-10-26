@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,10 +18,10 @@ type unavailable struct{}
 
 func (unavailable) Model() string { return "test/unavailable" }
 func (unavailable) EmbedDocuments(context.Context, []string) ([][]float32, error) {
-	return nil, &ollama.UnavailableError{Reason: "test"}
+	return nil, fmt.Errorf("%w: test", ollama.ErrUnavailable)
 }
 func (unavailable) EmbedQuery(context.Context, string) ([]float32, error) {
-	return nil, &ollama.UnavailableError{Reason: "test"}
+	return nil, fmt.Errorf("%w: test", ollama.ErrUnavailable)
 }
 
 // unitEmbedder returns the same unit vector for every text.
