@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -70,47 +71,26 @@ type Vector struct {
 	Vec         []float32
 }
 
+// embeddedBy follows the selected columns of a query for model's
+// embeddings, one row per highlight, by id.
+const embeddedBy = `FROM embeddings e JOIN highlights h ON h.id = e.highlight_id
+	WHERE e.model = ? ORDER BY h.id`
+
 // Vectors loads every embedding made by model, with each highlight's book
 // (for preferring other books in similar-highlight lists).
 func (s *Store) Vectors(model string) ([]Vector, error) {
-	embedded, err := s.embedded(model, false)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Vector, len(embedded))
-	for i, in := range embedded {
-		out[i] = Vector{HighlightID: in.ID, BookID: in.BookID, Vec: in.Vec}
-	}
-	return out, nil
-}
-
-// embedded loads every highlight embedded by model, by id, with its text
-// only when withText is set.
-func (s *Store) embedded(model string, withText bool) ([]EmbeddedText, error) {
-	text := "''"
-	if withText {
-		text = "h.text"
-	}
-	rows, err := s.db.Query(`SELECT h.id, h.book_id, `+text+`, e.vector FROM embeddings e
-		JOIN highlights h ON h.id = e.highlight_id
-		WHERE e.model = ? ORDER BY h.id`, model)
+	rows, err := s.db.Query(`SELECT h.id, h.book_id, e.vector `+embeddedBy, model)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []EmbeddedText
+	var out []Vector
 	for rows.Next() {
-		var (
-			in   EmbeddedText
-			blob []byte
-		)
-		if err := rows.Scan(&in.ID, &in.BookID, &in.Text, &blob); err != nil {
+		v, err := scanVector(rows)
+		if err != nil {
 			return nil, err
 		}
-		if in.Vec, err = DecodeVector(blob); err != nil {
-			return nil, fmt.Errorf("embedding for %d: %w", in.ID, err)
-		}
-		out = append(out, in)
+		out = append(out, v)
 	}
 	return out, rows.Err()
 }
@@ -125,7 +105,39 @@ type EmbeddedText struct {
 
 // EmbeddedTexts loads every highlight embedded by model, with its text.
 func (s *Store) EmbeddedTexts(model string) ([]EmbeddedText, error) {
-	return s.embedded(model, true)
+	rows, err := s.db.Query(`SELECT h.id, h.book_id, e.vector, h.text `+embeddedBy, model)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EmbeddedText
+	for rows.Next() {
+		var text string
+		v, err := scanVector(rows, &text)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, EmbeddedText{ID: v.HighlightID, BookID: v.BookID, Text: text, Vec: v.Vec})
+	}
+	return out, rows.Err()
+}
+
+// scanVector scans a highlight id, book id, and vector, then any extra
+// destinations.
+func scanVector(rows *sql.Rows, extra ...any) (Vector, error) {
+	var (
+		v    Vector
+		blob []byte
+	)
+	if err := rows.Scan(append([]any{&v.HighlightID, &v.BookID, &blob}, extra...)...); err != nil {
+		return Vector{}, err
+	}
+	vec, err := DecodeVector(blob)
+	if err != nil {
+		return Vector{}, fmt.Errorf("embedding for %d: %w", v.HighlightID, err)
+	}
+	v.Vec = vec
+	return v, nil
 }
 
 // EmbeddingStamp fingerprints model's embeddings cheaply: it changes
