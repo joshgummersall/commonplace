@@ -18,15 +18,6 @@ var version = "dev"
 // dbEnvVar overrides the default database path; --db overrides both.
 const dbEnvVar = "COMMONPLACE_DB"
 
-type ExitError struct {
-	Code    int
-	Message string
-}
-
-func (e ExitError) Error() string {
-	return e.Message
-}
-
 type App struct {
 	stdin  io.Reader
 	stdout io.Writer
