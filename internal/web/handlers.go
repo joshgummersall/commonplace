@@ -66,7 +66,13 @@ type dailyPage struct {
 
 func (s *Server) daily(w http.ResponseWriter, r *http.Request) error {
 	now := s.now()
-	entries, err := daily.Today(s.store, now, daily.DefaultSize, s.embedModel)
+	// Daily varies its set by the embeddings of this model; "" without
+	// an embedder.
+	model := ""
+	if s.searcher.Embedder != nil {
+		model = s.searcher.Embedder.Model()
+	}
+	entries, err := daily.Today(s.store, now, daily.DefaultSize, model)
 	if err != nil {
 		return err
 	}
