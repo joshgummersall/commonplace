@@ -14,6 +14,17 @@ const UserSource = "user"
 // ErrNotFound is returned when a row to change does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrInvalid matches every error about bad user input, so callers can
+// show the message to the user. The errors themselves say only what is
+// wrong.
+var ErrInvalid = errors.New("invalid input")
+
+// invalid is a message about bad user input; it matches ErrInvalid.
+type invalid string
+
+func (e invalid) Error() string        { return string(e) }
+func (e invalid) Is(target error) bool { return target == ErrInvalid }
+
 // Note is a dated note on a highlight.
 type Note struct {
 	ID          int64
@@ -101,7 +112,7 @@ func scanNotes(rows *sql.Rows) ([]Note, error) {
 func (s *Store) AddNote(highlightID int64, body string, now time.Time) (Note, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return Note{}, errors.New("note is empty")
+		return Note{}, invalid("note is empty")
 	}
 	res, err := s.db.Exec(`INSERT INTO notes (highlight_id, source, body, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)`, highlightID, UserSource, body, formatTime(now), formatTime(now))
@@ -121,7 +132,7 @@ func (s *Store) AddNote(highlightID int64, body string, now time.Time) (Note, er
 func (s *Store) UpdateNote(id int64, body string, now time.Time) error {
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return errors.New("note is empty")
+		return invalid("note is empty")
 	}
 	return s.execOne(`UPDATE notes SET body = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
 		body, formatTime(now), id)

@@ -56,11 +56,11 @@ func CleanTagName(name string) (string, error) {
 	name = strings.Join(strings.Fields(name), " ")
 	switch {
 	case name == "":
-		return "", errors.New("a tag needs a name")
+		return "", invalid("a tag needs a name")
 	case strings.Contains(name, ","):
-		return "", errors.New("a tag name can't hold a comma")
+		return "", invalid("a tag name can't hold a comma")
 	case len([]rune(name)) > MaxTagName:
-		return "", fmt.Errorf("keep tag names under %d characters", MaxTagName)
+		return "", invalid(fmt.Sprintf("keep tag names under %d characters", MaxTagName))
 	}
 	return name, nil
 }
@@ -303,7 +303,7 @@ func (s *Store) RenameTag(id int64, name string) (int64, error) {
 // first, as RenameTag does when given the other tag's name.
 func (s *Store) MergeTag(from, into int64) error {
 	if from == into {
-		return errors.New("a tag can't merge into itself")
+		return invalid("a tag can't merge into itself")
 	}
 	return s.InTx(func(t *Tx) error {
 		var n int

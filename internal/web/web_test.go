@@ -269,8 +269,10 @@ func TestNotes(t *testing.T) {
 
 	_, body = h.do("PUT", noteURL, url.Values{"body": {"Edited thought."}}, true)
 	mustContain(t, body, "Edited thought.")
-	if status, _ := h.do("PUT", noteURL, url.Values{"body": {""}}, true); status != http.StatusBadRequest {
+	if status, body := h.do("PUT", noteURL, url.Values{"body": {""}}, true); status != http.StatusBadRequest {
 		t.Errorf("empty edit = %d, want 400", status)
+	} else {
+		mustContain(t, body, "note is empty")
 	}
 
 	// The card on the daily page counts notes and the search finds them.
@@ -293,6 +295,34 @@ func TestNotes(t *testing.T) {
 	mustContain(t, h.get(page), "Edited thought.")
 	if status, _ := h.do("POST", noteURL+"/restore", nil, true); status != http.StatusNotFound {
 		t.Errorf("restoring a live note = %d, want 404", status)
+	}
+}
+
+// A store failure that isn't about the input is a 500 and stays out of
+// the form, rather than showing the database's words to the user.
+func TestStoreFailureIsNotAFormError(t *testing.T) {
+	h := newHarness(t, clip("Meditations", "Marcus Aurelius", 10, "The impediment to action."))
+	page := fmt.Sprintf("/h/%d", h.firstID())
+	if _, err := h.store.DB().Exec(`CREATE TRIGGER fail_notes BEFORE INSERT ON notes
+		BEGIN SELECT RAISE(ABORT, 'disk on fire'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.store.DB().Exec(`CREATE TRIGGER fail_tags BEFORE INSERT ON tags
+		BEGIN SELECT RAISE(ABORT, 'disk on fire'); END`); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []struct {
+		method, path string
+		form         url.Values
+	}{
+		{"POST", page + "/notes", url.Values{"body": {"A thought."}}},
+		{"PUT", page + "/tags", url.Values{"tags": {"Stoicism"}}},
+	} {
+		status, body := h.do(req.method, req.path, req.form, true)
+		if status != http.StatusInternalServerError {
+			t.Errorf("%s %s = %d, want 500", req.method, req.path, status)
+		}
+		mustNotContain(t, body, "disk on fire")
 	}
 }
 

@@ -154,8 +154,9 @@ func badRequest(format string, args ...any) error {
 }
 
 // handle adapts an error-returning handler: user errors get their status
-// and message, store.ErrNotFound becomes 404, and anything else is logged
-// and shown as a generic 500.
+// and message, store.ErrInvalid becomes 400 with its message,
+// store.ErrNotFound becomes 404, and anything else is logged and shown as
+// a generic 500.
 func (s *Server) handle(h func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Responses differ for htmx and full-page requests to one URL.
@@ -168,6 +169,8 @@ func (s *Server) handle(h func(http.ResponseWriter, *http.Request) error) http.H
 		switch {
 		case errors.As(err, &he):
 			http.Error(w, he.msg, he.status)
+		case errors.Is(err, store.ErrInvalid):
+			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, store.ErrNotFound):
 			http.Error(w, "Not found", http.StatusNotFound)
 		default:

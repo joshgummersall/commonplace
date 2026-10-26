@@ -392,6 +392,9 @@ func (s *Server) addNote(w http.ResponseWriter, r *http.Request) error {
 	}
 	data := notesData{HighlightID: id}
 	if _, err := s.store.AddNote(id, r.FormValue("body"), s.now()); err != nil {
+		if !errors.Is(err, store.ErrInvalid) {
+			return err
+		}
 		// Re-render the form with the problem rather than losing the draft.
 		data.Error = err.Error()
 		data.Draft = r.FormValue("body")
@@ -432,10 +435,7 @@ func (s *Server) updateNote(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if err := s.store.UpdateNote(n.ID, r.FormValue("body"), s.now()); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return err
-		}
-		return badRequest("%s", err)
+		return err
 	}
 	if n, err = s.store.Note(n.ID); err != nil {
 		return err
