@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -236,7 +237,7 @@ func (r *Seeder) run(done chan struct{}) {
 	r.status.Err = ""
 	if err != nil {
 		r.status.Err = err.Error()
-		if !errors.Is(err, ErrUnavailable) {
+		if !errors.Is(err, ollama.ErrUnavailable) {
 			r.logger.Error("suggesting tags failed", "err", err)
 		}
 		return

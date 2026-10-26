@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/joshgummersall/commonplace/internal/embedding"
+	"github.com/joshgummersall/commonplace/internal/ollama"
 )
 
 // unavailable is an embedder whose service is down.
@@ -17,10 +18,10 @@ type unavailable struct{}
 
 func (unavailable) Model() string { return "test/unavailable" }
 func (unavailable) EmbedDocuments(context.Context, []string) ([][]float32, error) {
-	return nil, fmt.Errorf("%w: test", embedding.ErrUnavailable)
+	return nil, fmt.Errorf("%w: test", ollama.ErrUnavailable)
 }
 func (unavailable) EmbedQuery(context.Context, string) ([]float32, error) {
-	return nil, fmt.Errorf("%w: test", embedding.ErrUnavailable)
+	return nil, fmt.Errorf("%w: test", ollama.ErrUnavailable)
 }
 
 // unitEmbedder returns the same unit vector for every text.

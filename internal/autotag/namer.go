@@ -23,9 +23,6 @@ type Namer interface {
 // configured otherwise.
 const DefaultNameModel = "qwen2.5:14b"
 
-// ErrUnavailable means the naming model could not be reached.
-var ErrUnavailable = ollama.ErrUnavailable
-
 // OllamaNamer names groups with a model served by Ollama's /api/generate.
 type OllamaNamer struct {
 	ollama.Client
