@@ -1,5 +1,10 @@
 package store
 
+import (
+	"database/sql"
+	"errors"
+)
+
 // Entry loads one highlight, or returns ErrNotFound.
 func (s *Store) Entry(id int64) (Entry, error) {
 	es, err := s.Entries([]int64{id})
@@ -15,6 +20,18 @@ func (s *Store) Entry(id int64) (Entry, error) {
 // SetFavorite marks or unmarks a highlight as a favorite.
 func (s *Store) SetFavorite(id int64, favorite bool) error {
 	return s.execOne(`UPDATE highlights SET favorite = ? WHERE id = ?`, favorite, id)
+}
+
+// ToggleFavorite flips whether a highlight is a favorite and returns the
+// new value, or ErrNotFound.
+func (s *Store) ToggleFavorite(id int64) (bool, error) {
+	var favorite bool
+	err := s.db.QueryRow(`UPDATE highlights SET favorite = NOT favorite
+		WHERE id = ? RETURNING favorite`, id).Scan(&favorite)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	return favorite, err
 }
 
 // SetBuried hides a highlight from the daily shuffle and the web app, or

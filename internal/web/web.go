@@ -31,9 +31,6 @@ var embedded embed.FS
 type Server struct {
 	store    *store.Store
 	searcher *search.Searcher
-	// embedModel names the embeddings Daily uses to vary its set; "" when
-	// there is no embedder.
-	embedModel string
 	// seeder suggests a first set of tags; nil without an embedder and a
 	// namer.
 	seeder *autotag.Seeder
@@ -66,9 +63,6 @@ type Options struct {
 // fails at startup rather than on first request.
 func New(s *store.Store, opts Options) (*Server, error) {
 	srv := &Server{store: s, searcher: search.New(s, opts.Embedder), logger: opts.Logger, now: opts.Now, files: embedded}
-	if opts.Embedder != nil {
-		srv.embedModel = opts.Embedder.Model()
-	}
 	if srv.logger == nil {
 		srv.logger = slog.Default()
 	}

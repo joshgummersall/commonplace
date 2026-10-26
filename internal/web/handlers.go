@@ -66,7 +66,13 @@ type dailyPage struct {
 
 func (s *Server) daily(w http.ResponseWriter, r *http.Request) error {
 	now := s.now()
-	entries, err := daily.Today(s.store, now, daily.DefaultSize, s.embedModel)
+	// Daily varies its set by the embeddings of this model; "" without
+	// an embedder.
+	model := ""
+	if s.searcher.Embedder != nil {
+		model = s.searcher.Embedder.Model()
+	}
+	entries, err := daily.Today(s.store, now, daily.DefaultSize, model)
 	if err != nil {
 		return err
 	}
@@ -319,15 +325,14 @@ func (s *Server) favorite(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	c, err := s.card(id)
+	favorite, err := s.store.ToggleFavorite(id)
 	if err != nil {
 		return err
 	}
-	if err := s.store.SetFavorite(id, !c.Favorite); err != nil {
-		return err
-	}
-	c.Favorite = !c.Favorite
-	return s.render(w, "favorite", c)
+	return s.render(w, "favorite", struct {
+		ID       int64
+		Favorite bool
+	}{id, favorite})
 }
 
 // cardFor loads the card a request is about, as the page it is on shows

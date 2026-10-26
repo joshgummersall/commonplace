@@ -229,7 +229,7 @@ func TestFavoriteAndBury(t *testing.T) {
 	_, body = h.do("POST", path+"/unbury?detail=1", nil, true)
 	mustContain(t, body, ">Bury<", "More like this ↓")
 	_, body = h.do("POST", path+"/bury?detail=1", nil, true)
-	mustContain(t, body, "is-buried", "Unbury")
+	mustContain(t, body, "is-buried", "Unbury", fmt.Sprintf(`hx-post="/h/%d/unbury?detail=1"`, id))
 
 	_, body = h.do("POST", path+"/unbury", nil, true)
 	mustNotContain(t, body, "is-buried")
