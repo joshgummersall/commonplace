@@ -230,6 +230,19 @@
   }
   const isPrefix = (seq) => [...bindings.keys()].some((k) => k.length > seq.length && k.startsWith(seq));
 
+  // helpScrollKey scrolls the open help with j, k, Ctrl-d, and Ctrl-u
+  // instead of moving the selection, and reports whether it did.
+  function helpScrollKey(e, key) {
+    const help = document.getElementById("help");
+    if (!help || help.hidden || seq !== "") return false;
+    const by = { j: 40, k: -40, "C-d": help.clientHeight / 2, "C-u": -help.clientHeight / 2 }[key];
+    if (by === undefined) return false;
+    e.preventDefault();
+    reset();
+    help.scrollBy({ top: by });
+    return true;
+  }
+
   function renderHelp() {
     const help = document.getElementById("help");
     if (!help) return;
@@ -337,12 +350,13 @@
   });
 
   // completionKey handles a key in a tag input while matches are shown,
-  // and reports whether it did.
+  // and reports whether it did. Enter picks a match rather than saving;
+  // once nothing is offered, it saves.
   function completionKey(e, input) {
     const list = openCompletions(input);
     if (!list) return false;
     const key = keyName(e);
-    if (key === "Tab") {
+    if (key === "Tab" || key === "Enter") {
       acceptTag(input, list.querySelector('[aria-selected="true"]').textContent);
     } else if (key === "ArrowDown" || key === "C-n") {
       moveCompletion(list, 1);
@@ -412,6 +426,7 @@
     }
     const key = keyName(e);
     if (!key || key === "Shift") return;
+    if (helpScrollKey(e, key)) return;
     // Enter on a focused button or link (reached with Tab) keeps its
     // normal meaning.
     if (key === "Enter" && seq === "" && t.closest("button, a")) return;
