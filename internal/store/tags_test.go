@@ -2,10 +2,13 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 )
 
 // addHighlights stores n highlights in each of the named books and returns
@@ -346,5 +349,38 @@ func TestCountsLeaveOutBuried(t *testing.T) {
 	all, _ := s.Books(true)
 	if len(books) != 1 || books[0].Title != "B" || len(all) != 2 {
 		t.Errorf("books = %+v without buried, %+v with", books, all)
+	}
+}
+
+// Errors about bad input match ErrInvalid but read as just the problem.
+func TestValidationErrorsAreInvalid(t *testing.T) {
+	s := openTemp(t)
+	ids := addHighlights(t, s, 2, "Book")
+	if err := s.SeedTags([]SeedTag{{Name: "Odds", Members: ids[:1]}, {Name: "Probability", Members: ids[1:]}}); err != nil {
+		t.Fatal(err)
+	}
+	odds := tagByName(t, s, "Odds")
+	_, renameErr := s.RenameTag(odds.ID, " ")
+	_, addErr := s.AddNote(ids[0], " ", time.Now())
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{renameErr, "a tag needs a name"},
+		{s.SetTags(ids[0], []string{"a,b"}), "a tag name can't hold a comma"},
+		{s.SetTags(ids[0], []string{strings.Repeat("x", MaxTagName+1)}), fmt.Sprintf("keep tag names under %d characters", MaxTagName)},
+		{s.MergeTag(odds.ID, odds.ID), "a tag can't merge into itself"},
+		{addErr, "note is empty"},
+		{s.UpdateNote(1, " ", time.Now()), "note is empty"},
+	} {
+		if !errors.Is(c.err, ErrInvalid) {
+			t.Errorf("%v does not match ErrInvalid", c.err)
+		}
+		if c.err == nil || c.err.Error() != c.want {
+			t.Errorf("err = %v, want %q", c.err, c.want)
+		}
+	}
+	if err := s.MergeTag(odds.ID, 9999); errors.Is(err, ErrInvalid) {
+		t.Errorf("a missing tag matches ErrInvalid: %v", err)
 	}
 }

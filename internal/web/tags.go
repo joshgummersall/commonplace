@@ -116,12 +116,12 @@ func (s *Server) renameTag(w http.ResponseWriter, r *http.Request) error {
 	}
 	name := r.FormValue("name")
 	id, err := s.store.RenameTag(t.ID, name)
-	if errors.Is(err, store.ErrNotFound) {
-		return err
-	}
-	if err != nil {
+	if errors.Is(err, store.ErrInvalid) {
 		// Show the problem in the form rather than losing the draft.
 		return s.render(w, "tag-rename", renameData{Tag: t, Draft: name, Error: err.Error()})
+	}
+	if err != nil {
+		return err
 	}
 	if id != t.ID {
 		w.Header().Set("HX-Refresh", "true")
@@ -173,10 +173,10 @@ func (s *Server) mergeTag(w http.ResponseWriter, r *http.Request) error {
 		return s.renderMerge(w, t, "Pick a tag to merge into.")
 	}
 	if err := s.store.MergeTag(t.ID, into); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return err
+		if errors.Is(err, store.ErrInvalid) {
+			return s.renderMerge(w, t, err.Error())
 		}
-		return s.renderMerge(w, t, err.Error())
+		return err
 	}
 	w.Header().Set("HX-Refresh", "true")
 	return nil
@@ -288,7 +288,7 @@ func (s *Server) saveTags(w http.ResponseWriter, r *http.Request) error {
 	}
 	typed := r.FormValue("tags")
 	if err := s.store.SetTags(id, splitTags(typed)); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		if !errors.Is(err, store.ErrInvalid) {
 			return err
 		}
 		data, ferr := s.editTagsForm(id, typed, err.Error())
