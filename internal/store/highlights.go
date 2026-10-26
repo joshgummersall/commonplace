@@ -27,42 +27,6 @@ type Highlight struct {
 	Weight        float64
 }
 
-// Tx is a write transaction. Get one from Store.InTx.
-type Tx struct {
-	tx *sql.Tx
-}
-
-// InTx runs fn in a transaction, committing if fn returns nil.
-func (s *Store) InTx(fn func(*Tx) error) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	if err := fn(&Tx{tx: tx}); err != nil {
-		tx.Rollback()
-		return err
-	}
-	return tx.Commit()
-}
-
-// BookID returns the id of the book with this title and author, creating
-// it if needed.
-func (t *Tx) BookID(title, author string) (int64, error) {
-	var id int64
-	err := t.tx.QueryRow(`SELECT id FROM books WHERE title = ? AND author = ?`, title, author).Scan(&id)
-	if err == nil {
-		return id, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
-	}
-	res, err := t.tx.Exec(`INSERT INTO books (title, author) VALUES (?, ?)`, title, author)
-	if err != nil {
-		return 0, fmt.Errorf("insert book %q: %w", title, err)
-	}
-	return res.LastInsertId()
-}
-
 const highlightColumns = `id, book_id, source, text, location, page, loc_start, loc_end,
 	highlighted_at, imported_at, hash, favorite, buried, last_seen, weight`
 
@@ -195,32 +159,101 @@ func scanHighlight(rows *sql.Rows, extra ...any) (Highlight, error) {
 	return h, nil
 }
 
-// Times are stored as RFC 3339 in UTC so they sort as text.
-func formatTime(t time.Time) string {
-	return t.UTC().Format(time.RFC3339)
+// Entry is a highlight with what a reader needs to display it.
+type Entry struct {
+	Highlight
+	BookTitle  string
+	BookAuthor string
 }
 
-func nullTime(t time.Time) any {
-	if t.IsZero() {
-		return nil
-	}
-	return formatTime(t)
+// EntryColumns selects an Entry from highlights h joined to books b. Use
+// it with ScanEntry in queries outside this package.
+var EntryColumns = prefixed("h.", highlightColumns) + ", b.title, b.author"
+
+// ScanEntry scans EntryColumns, then any extra destinations.
+func ScanEntry(rows *sql.Rows, extra ...any) (Entry, error) {
+	var e Entry
+	h, err := scanHighlight(rows, append([]any{&e.BookTitle, &e.BookAuthor}, extra...)...)
+	e.Highlight = h
+	return e, err
 }
 
-func nullInt(n int) any {
-	if n == 0 {
-		return nil
+// Entries loads highlights by id, in the order given. Missing ids are
+// skipped.
+func (s *Store) Entries(ids []int64) ([]Entry, error) {
+	if len(ids) == 0 {
+		return nil, nil
 	}
-	return n
-}
-
-func parseTime(s sql.NullString) (time.Time, error) {
-	if !s.Valid || s.String == "" {
-		return time.Time{}, nil
-	}
-	t, err := time.Parse(time.RFC3339, s.String)
+	rows, err := s.db.Query(`SELECT `+EntryColumns+`
+		FROM highlights h JOIN books b ON b.id = h.book_id
+		WHERE h.id IN (`+placeholders(len(ids))+`)`, int64Args(ids)...)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("parse stored time %q: %w", s.String, err)
+		return nil, err
 	}
-	return t, nil
+	byID, err := scanEntries(rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Entry, 0, len(ids))
+	for _, id := range ids {
+		if e, ok := byID[id]; ok {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// Entry loads one highlight, or returns ErrNotFound.
+func (s *Store) Entry(id int64) (Entry, error) {
+	es, err := s.Entries([]int64{id})
+	if err != nil {
+		return Entry{}, err
+	}
+	if len(es) == 0 {
+		return Entry{}, ErrNotFound
+	}
+	return es[0], nil
+}
+
+func scanEntries(rows *sql.Rows) (map[int64]Entry, error) {
+	defer rows.Close()
+	out := make(map[int64]Entry)
+	for rows.Next() {
+		e, err := ScanEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[e.ID] = e
+	}
+	return out, rows.Err()
+}
+
+// CountHighlights counts every highlight.
+func (s *Store) CountHighlights() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT count(*) FROM highlights`).Scan(&n)
+	return n, err
+}
+
+// SetFavorite marks or unmarks a highlight as a favorite.
+func (s *Store) SetFavorite(id int64, favorite bool) error {
+	return s.execOne(`UPDATE highlights SET favorite = ? WHERE id = ?`, favorite, id)
+}
+
+// ToggleFavorite flips whether a highlight is a favorite and returns the
+// new value, or ErrNotFound.
+func (s *Store) ToggleFavorite(id int64) (bool, error) {
+	var favorite bool
+	err := s.db.QueryRow(`UPDATE highlights SET favorite = NOT favorite
+		WHERE id = ? RETURNING favorite`, id).Scan(&favorite)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	return favorite, err
+}
+
+// SetBuried hides a highlight from the daily shuffle and the web app, or
+// brings it back. The CLI lists it either way.
+func (s *Store) SetBuried(id int64, buried bool) error {
+	return s.execOne(`UPDATE highlights SET buried = ? WHERE id = ?`, buried, id)
 }

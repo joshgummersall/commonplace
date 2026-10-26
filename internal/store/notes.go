@@ -11,20 +11,6 @@ import (
 // UserSource marks notes written in the web app.
 const UserSource = "user"
 
-// ErrNotFound is returned when a row to change does not exist.
-var ErrNotFound = errors.New("not found")
-
-// ErrInvalid matches every error about bad user input, so callers can
-// show the message to the user. The errors themselves say only what is
-// wrong.
-var ErrInvalid = errors.New("invalid input")
-
-// invalid is a message about bad user input; it matches ErrInvalid.
-type invalid string
-
-func (e invalid) Error() string        { return string(e) }
-func (e invalid) Is(target error) bool { return target == ErrInvalid }
-
 // Note is a dated note on a highlight.
 type Note struct {
 	ID          int64
@@ -155,17 +141,26 @@ func (s *Store) RestoreNote(id int64) (int64, error) {
 	return hid, err
 }
 
-func (s *Store) execOne(q string, args ...any) error {
-	res, err := s.db.Exec(q, args...)
+// NoteCounts returns how many live notes each highlight has.
+func (s *Store) NoteCounts(ids []int64) (map[int64]int, error) {
+	out := make(map[int64]int)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(`SELECT highlight_id, count(*) FROM notes
+		WHERE deleted_at IS NULL AND highlight_id IN (`+placeholders(len(ids))+`)
+		GROUP BY highlight_id`, int64Args(ids)...)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
 	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return out, rows.Err()
 }

@@ -5,6 +5,7 @@ package store
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -18,6 +19,20 @@ import (
 
 //go:embed migrations/*.sql
 var migrationFS embed.FS
+
+// ErrNotFound is returned when a row to change does not exist.
+var ErrNotFound = errors.New("not found")
+
+// ErrInvalid matches every error about bad user input, so callers can
+// show the message to the user. The errors themselves say only what is
+// wrong.
+var ErrInvalid = errors.New("invalid input")
+
+// invalid is a message about bad user input; it matches ErrInvalid.
+type invalid string
+
+func (e invalid) Error() string        { return string(e) }
+func (e invalid) Is(target error) bool { return target == ErrInvalid }
 
 // Store wraps the commonplace database.
 type Store struct {
