@@ -31,24 +31,6 @@ type BookCount struct {
 	Count  int
 }
 
-// BuriedIDs returns the set of buried highlights.
-func (s *Store) BuriedIDs() (map[int64]bool, error) {
-	rows, err := s.db.Query(`SELECT id FROM highlights WHERE buried = 1`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make(map[int64]bool)
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out[id] = true
-	}
-	return out, rows.Err()
-}
-
 // Books lists books that have highlights, by title. Without withBuried,
 // buried highlights aren't counted, and a book with only buried ones is
 // left out.
@@ -102,22 +84,4 @@ func int64Args(ids []int64) []any {
 		args[i] = id
 	}
 	return args
-}
-
-// FavoriteIDs returns the set of favorite highlights.
-func (s *Store) FavoriteIDs() (map[int64]bool, error) {
-	rows, err := s.db.Query(`SELECT id FROM highlights WHERE favorite = 1`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make(map[int64]bool)
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out[id] = true
-	}
-	return out, rows.Err()
 }

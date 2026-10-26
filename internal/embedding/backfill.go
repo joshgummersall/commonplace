@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -65,7 +66,7 @@ func KeepFresh(ctx context.Context, s *store.Store, e Embedder, interval time.Du
 	run := func() {
 		n, err := Backfill(ctx, s, e, nil)
 		switch {
-		case errors.Is(err, ErrUnavailable):
+		case errors.Is(err, ollama.ErrUnavailable):
 			if !unavailable {
 				logger.Warn("embeddings paused; semantic search covers only embedded highlights", "err", err)
 			}

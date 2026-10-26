@@ -5,8 +5,6 @@ package embedding
 import (
 	"context"
 	"math"
-
-	"github.com/joshgummersall/commonplace/internal/ollama"
 )
 
 // Embedder turns text into vectors. Implementations own any asymmetry
@@ -22,10 +20,6 @@ type Embedder interface {
 	// EmbedQuery embeds a search query. The vector is unit length.
 	EmbedQuery(ctx context.Context, text string) ([]float32, error)
 }
-
-// ErrUnavailable means the embedding service could not be reached.
-// Callers fall back to keyword search rather than failing.
-var ErrUnavailable = ollama.ErrUnavailable
 
 // Normalize scales v to unit length in place, so cosine similarity becomes
 // a dot product. A zero vector is left as is.

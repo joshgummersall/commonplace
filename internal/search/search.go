@@ -3,11 +3,10 @@ package search
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/joshgummersall/commonplace/internal/embedding"
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -77,11 +76,12 @@ func (sr *Searcher) Run(ctx context.Context, q Query, mode Mode) (Page, error) {
 	}
 	qvec, err := sr.embedQuery(ctx, q.Text)
 	if err != nil {
-		if !errors.Is(err, embedding.ErrUnavailable) && !errors.Is(err, errNoVectors) {
+		var unavailable *ollama.UnavailableError
+		if !errors.As(err, &unavailable) {
 			return Page{}, err
 		}
 		p, kerr := sr.keyword(q)
-		p.Fallback = strings.TrimPrefix(err.Error(), embedding.ErrUnavailable.Error()+": ")
+		p.Fallback = unavailable.Reason
 		return p, kerr
 	}
 	semantic, err := sr.nearest(q, qvec)
@@ -120,48 +120,25 @@ func (sr *Searcher) Run(ctx context.Context, q Query, mode Mode) (Page, error) {
 	return p, err
 }
 
-var errNoVectors = errors.New("no highlights are embedded yet")
-
 func (sr *Searcher) embedQuery(ctx context.Context, text string) ([]float32, error) {
 	if sr.Embedder == nil || sr.Index == nil {
-		return nil, fmt.Errorf("%w: no embedder configured", embedding.ErrUnavailable)
+		return nil, &ollama.UnavailableError{Reason: "no embedder configured"}
 	}
 	if n, err := sr.Index.Size(); err != nil {
 		return nil, err
 	} else if n == 0 {
-		return nil, errNoVectors
+		return nil, &ollama.UnavailableError{Reason: "no highlights are embedded yet"}
 	}
 	return sr.Embedder.EmbedQuery(ctx, text)
 }
 
 // nearest ranks every embedded highlight passing q's filters.
 func (sr *Searcher) nearest(q Query, qvec []float32) ([]int64, error) {
-	var favorites map[int64]bool
-	if q.Favorites {
-		var err error
-		if favorites, err = sr.Store.FavoriteIDs(); err != nil {
-			return nil, err
-		}
+	keep, err := sr.keep(q)
+	if err != nil {
+		return nil, err
 	}
-	var tagged map[int64]bool
-	if q.TagID != 0 {
-		var err error
-		if tagged, err = sr.Store.TagMemberIDs(q.TagID); err != nil {
-			return nil, err
-		}
-	}
-	var buried map[int64]bool
-	if q.Buried != BuriedIncluded {
-		var err error
-		if buried, err = sr.Store.BuriedIDs(); err != nil {
-			return nil, err
-		}
-	}
-	hits, err := sr.Index.Nearest(qvec, SemanticK, func(v store.Vector) bool {
-		return (q.BookID == 0 || v.BookID == q.BookID) && (!q.Favorites || favorites[v.HighlightID]) &&
-			(q.TagID == 0 || tagged[v.HighlightID]) &&
-			(q.Buried == BuriedIncluded || buried[v.HighlightID] == (q.Buried == BuriedOnly))
-	})
+	hits, err := sr.Index.Nearest(qvec, SemanticK, keep)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +147,26 @@ func (sr *Searcher) nearest(q Query, qvec []float32) ([]int64, error) {
 		ids[i] = h.ID
 	}
 	return ids, nil
+}
+
+// Similar finds the k highlights nearest id in meaning, in other books and
+// in its own, among those passing q's filters; q's text is ignored. ok is
+// false when id has no embedding. It needs an Index.
+func (sr *Searcher) Similar(id int64, k int, q Query) (other, same []Scored, ok bool, err error) {
+	keep, err := sr.keep(q)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return sr.Index.SimilarEntries(id, k, keep)
+}
+
+// keep turns q's filters into a check on vectors, or nil when q has none.
+func (sr *Searcher) keep(q Query) (func(store.Vector) bool, error) {
+	ids, err := filterIDs(sr.Store, q)
+	if err != nil || ids == nil {
+		return nil, err
+	}
+	return func(v store.Vector) bool { return ids[v.HighlightID] }, nil
 }
 
 func (sr *Searcher) keyword(q Query) (Page, error) {

@@ -113,7 +113,8 @@ type searchPage struct {
 // Buried reports whether the Buried filter is on.
 func (p searchPage) Buried() bool { return p.Query.Buried == search.BuriedOnly }
 
-func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
+// parseQuery reads a search from the URL params queryValues writes.
+func parseQuery(r *http.Request) (search.Query, error) {
 	q := search.Query{Text: r.FormValue("q"), Favorites: r.FormValue("fav") == "1", Buried: search.BuriedHidden}
 	if r.FormValue("buried") == "1" {
 		q.Buried = search.BuriedOnly
@@ -121,14 +122,14 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	if b := r.FormValue("book"); b != "" {
 		id, err := strconv.ParseInt(b, 10, 64)
 		if err != nil {
-			return badRequest("bad book id %q", b)
+			return q, badRequest("bad book id %q", b)
 		}
 		q.BookID = id
 	}
 	if t := r.FormValue("tag"); t != "" {
 		id, err := strconv.ParseInt(t, 10, 64)
 		if err != nil {
-			return badRequest("bad tag id %q", t)
+			return q, badRequest("bad tag id %q", t)
 		}
 		q.TagID = id
 	}
@@ -137,9 +138,42 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	if o := r.FormValue("offset"); o != "" && isHTMX(r) {
 		n, err := strconv.Atoi(o)
 		if err != nil || n < 0 {
-			return badRequest("bad offset %q", o)
+			return q, badRequest("bad offset %q", o)
 		}
 		q.Offset = n
+	}
+	return q, nil
+}
+
+// queryValues writes q as the URL params parseQuery reads, leaving out
+// defaults.
+func queryValues(q search.Query) url.Values {
+	v := url.Values{}
+	if q.Text != "" {
+		v.Set("q", q.Text)
+	}
+	if q.BookID != 0 {
+		v.Set("book", strconv.FormatInt(q.BookID, 10))
+	}
+	if q.TagID != 0 {
+		v.Set("tag", strconv.FormatInt(q.TagID, 10))
+	}
+	if q.Favorites {
+		v.Set("fav", "1")
+	}
+	if q.Buried == search.BuriedOnly {
+		v.Set("buried", "1")
+	}
+	if q.Offset != 0 {
+		v.Set("offset", strconv.Itoa(q.Offset))
+	}
+	return v
+}
+
+func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
+	q, err := parseQuery(r)
+	if err != nil {
+		return err
 	}
 	data := searchPage{
 		page:  page{Title: "Search", Nav: "search"},
@@ -163,7 +197,6 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	case isHTMX(r):
 		return s.render(w, "results", data)
 	}
-	var err error
 	if data.Books, err = s.store.Books(false); err != nil {
 		return err
 	}
@@ -185,23 +218,9 @@ func (s *Server) searchResults(r *http.Request, data *searchPage) error {
 	data.Total, data.Fallback = p.Total, p.Fallback
 	data.Semantic, data.Words, data.Meaning = p.Semantic, p.WordMatches, p.MeaningOnly
 	if p.More {
-		next := url.Values{"offset": {strconv.Itoa(q.Offset + search.PageSize)}}
-		if q.Text != "" {
-			next.Set("q", q.Text)
-		}
-		if q.BookID != 0 {
-			next.Set("book", strconv.FormatInt(q.BookID, 10))
-		}
-		if q.TagID != 0 {
-			next.Set("tag", strconv.FormatInt(q.TagID, 10))
-		}
-		if q.Favorites {
-			next.Set("fav", "1")
-		}
-		if q.Buried == search.BuriedOnly {
-			next.Set("buried", "1")
-		}
-		data.Next = "/search?" + next.Encode()
+		next := q
+		next.Offset += search.PageSize
+		data.Next = "/search?" + queryValues(next).Encode()
 	}
 	entries := make([]store.Entry, len(p.Results))
 	for i, res := range p.Results {
@@ -279,15 +298,11 @@ func (s *Server) similar(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	var data similarData
-	buried, err := s.store.BuriedIDs()
-	if err != nil {
-		return err
-	}
 	if s.searcher.Index == nil {
 		data.Reason = "Similar highlights need an embedding model; start Ollama and restart cmpl serve."
 		return s.render(w, "similar", data)
 	}
-	other, same, ok, err := s.searcher.Index.SimilarEntries(id, similarK, func(v store.Vector) bool { return !buried[v.HighlightID] })
+	other, same, ok, err := s.searcher.Similar(id, similarK, search.Query{Buried: search.BuriedHidden})
 	if err != nil {
 		return err
 	}

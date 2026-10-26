@@ -13,6 +13,7 @@ import (
 	"github.com/joshgummersall/commonplace/internal/clippings"
 	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/importer"
+	"github.com/joshgummersall/commonplace/internal/ollama"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -31,7 +32,7 @@ func (c conceptEmbedder) Model() string { return "test/concepts" }
 
 func (c conceptEmbedder) EmbedDocuments(_ context.Context, texts []string) ([][]float32, error) {
 	if c.down {
-		return nil, fmt.Errorf("%w: Ollama is not reachable at http://test", embedding.ErrUnavailable)
+		return nil, &ollama.UnavailableError{Reason: "Ollama is not reachable at http://test"}
 	}
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
@@ -183,7 +184,7 @@ func TestRunFallsBackToKeyword(t *testing.T) {
 		sr, _ := newSearcher(t, nil, library)
 		sr.Embedder, sr.Index = nil, nil
 		p, err := sr.Run(ctx, Query{Text: "luck"}, ModeSemantic)
-		if err != nil || len(p.Results) != 1 || p.Fallback == "" {
+		if err != nil || len(p.Results) != 1 || p.Fallback != "no embedder configured" {
 			t.Errorf("results %q, fallback %q, err %v", texts(p), p.Fallback, err)
 		}
 	})
@@ -201,7 +202,7 @@ func TestRunFallsBackToKeyword(t *testing.T) {
 
 	t.Run("real errors still fail", func(t *testing.T) {
 		sr, _ := newSearcher(t, failing{}, library)
-		if _, err := sr.Run(ctx, Query{Text: "luck"}, ModeHybrid); err == nil || errors.Is(err, embedding.ErrUnavailable) {
+		if _, err := sr.Run(ctx, Query{Text: "luck"}, ModeHybrid); err == nil || errors.Is(err, ollama.ErrUnavailable) {
 			t.Errorf("err = %v, want the embedder's own error", err)
 		}
 	})
@@ -437,5 +438,88 @@ func TestRunBuried(t *testing.T) {
 		if h.ID == luck {
 			t.Error("Similar kept a rejected highlight")
 		}
+	}
+}
+
+// Semantic search and similar highlights filter with the same SQL as
+// keyword search.
+func TestFilters(t *testing.T) {
+	sr, ids := newSearcher(t, conceptEmbedder{}, library)
+	ctx := context.Background()
+	luck := ids["Luck plays a part, but process makes a team."]
+	fortune := ids["Fortune favors the prepared, but chance decides the rest."]
+	random := ids["Most success is random noise mistaken for skill."]
+	if err := sr.Store.SetTags(luck, []string{"Chance"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sr.Store.SetTags(fortune, []string{"Chance"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sr.Store.SetFavorite(fortune, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := sr.Store.SetBuried(random, true); err != nil {
+		t.Fatal(err)
+	}
+	var chance, fooled int64
+	sr.Store.DB().QueryRow(`SELECT id FROM tags WHERE name = 'Chance'`).Scan(&chance)
+	sr.Store.DB().QueryRow(`SELECT book_id FROM highlights WHERE id = ?`, fortune).Scan(&fooled)
+
+	if got, err := filterIDs(sr.Store, Query{Text: "luck"}); err != nil || got != nil {
+		t.Errorf("no filters: %v, %v; want nil", got, err)
+	}
+	for _, tt := range []struct {
+		name string
+		q    Query
+		want []int64
+	}{
+		{"tag", Query{TagID: chance}, []int64{luck, fortune}},
+		{"favorites", Query{Favorites: true}, []int64{fortune}},
+		{"book", Query{BookID: fooled}, []int64{fortune, random}},
+		{"book, not buried", Query{BookID: fooled, Buried: BuriedHidden}, []int64{fortune}},
+		{"buried only", Query{Buried: BuriedOnly}, []int64{random}},
+		{"tag and favorites", Query{Text: "ignored", TagID: chance, Favorites: true}, []int64{fortune}},
+	} {
+		got, err := filterIDs(sr.Store, tt.q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(tt.want) {
+			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
+		}
+		for _, id := range tt.want {
+			if !got[id] {
+				t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
+			}
+		}
+
+		// Semantic search keeps to the same highlights.
+		tt.q.Text = "luck"
+		p, err := sr.Run(ctx, tt.q, ModeSemantic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range p.Results {
+			if !got[r.ID] {
+				t.Errorf("%s: semantic search listed %d, outside %v", tt.name, r.ID, tt.want)
+			}
+		}
+	}
+
+	// Similar leaves out buried highlights only when asked to.
+	similar := func(b Buried) bool {
+		other, same, ok, err := sr.Similar(fortune, 5, Query{Buried: b})
+		if err != nil || !ok {
+			t.Fatalf("Similar: ok %v, err %v", ok, err)
+		}
+		for _, h := range append(other, same...) {
+			if h.ID == random {
+				return true
+			}
+		}
+		return false
+	}
+	if !similar(BuriedIncluded) || similar(BuriedHidden) {
+		t.Errorf("buried listed: included %v, hidden %v; want true, false", similar(BuriedIncluded), similar(BuriedHidden))
 	}
 }

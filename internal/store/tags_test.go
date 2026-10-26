@@ -221,10 +221,6 @@ func TestTagSummariesAndDelete(t *testing.T) {
 	if len(tag.TopBooks) != 2 || tag.TopBooks[0].Title != "A" || tag.TopBooks[0].Count != 2 {
 		t.Errorf("top books = %+v", tag.TopBooks)
 	}
-	members, err := s.TagMemberIDs(tag.ID)
-	if err != nil || len(members) != 4 || members[ids[4]] {
-		t.Errorf("members = %v, %v", members, err)
-	}
 	if n, _ := s.UntaggedCount(); n != 2 {
 		t.Errorf("untagged = %d, want 2", n)
 	}

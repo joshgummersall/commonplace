@@ -18,6 +18,7 @@ import (
 	"github.com/joshgummersall/commonplace/internal/clippings"
 	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/importer"
+	"github.com/joshgummersall/commonplace/internal/search"
 	"github.com/joshgummersall/commonplace/internal/store"
 )
 
@@ -512,6 +513,15 @@ func TestSimilarPanel(t *testing.T) {
 	}
 	mustNotContain(t, body, "Never mistake luck") // not similar to itself
 
+	// Buried highlights are left out, as everywhere else in the app.
+	var shapes int64
+	s.DB().QueryRow(`SELECT id FROM highlights WHERE text LIKE 'Luck shapes%'`).Scan(&shapes)
+	if err := s.SetBuried(shapes, true); err != nil {
+		t.Fatal(err)
+	}
+	_, body = h.do("GET", fmt.Sprintf("/h/%d/similar", luck), nil, true)
+	mustNotContain(t, body, "Luck shapes outcomes")
+
 	// The quote page loads the panel lazily and offers More like this.
 	page := h.get(fmt.Sprintf("/h/%d", luck))
 	mustContain(t, page, fmt.Sprintf(`hx-get="/h/%d/similar"`, luck), `href="#similar"`)
@@ -564,4 +574,31 @@ func TestSearchCountLine(t *testing.T) {
 	mustContain(t, h.get("/search?q=luck"), "1 with your words · 2 more similar in meaning")
 	// Without the embedder's help, a plain count.
 	mustContain(t, newHarness(t, clips...).get("/search?q=luck"), "1 result<")
+}
+
+// queryValues writes what parseQuery reads; offset only counts for htmx.
+func TestQueryRoundTrip(t *testing.T) {
+	for _, q := range []search.Query{
+		{Buried: search.BuriedHidden},
+		{Text: `luck "and skill"`, BookID: 3, TagID: 7, Favorites: true, Buried: search.BuriedOnly, Offset: 100},
+	} {
+		req := httptest.NewRequest("GET", "/search?"+queryValues(q).Encode(), nil)
+		req.Header.Set("HX-Request", "true")
+		if got, err := parseQuery(req); err != nil || got != q {
+			t.Errorf("round trip = %+v, %v; want %+v", got, err, q)
+		}
+		req.Header.Del("HX-Request")
+		want := q
+		want.Offset = 0
+		if got, err := parseQuery(req); err != nil || got != want {
+			t.Errorf("full page = %+v, %v; want %+v", got, err, want)
+		}
+	}
+	for _, raw := range []string{"book=x", "tag=x", "offset=-1"} {
+		req := httptest.NewRequest("GET", "/search?"+raw, nil)
+		req.Header.Set("HX-Request", "true")
+		if _, err := parseQuery(req); err == nil {
+			t.Errorf("%s: no error", raw)
+		}
+	}
 }
