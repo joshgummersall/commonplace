@@ -1,7 +1,7 @@
 {{template "head" .}}
 <form class="search" role="search" action="/search"
   hx-get="/search" hx-target="#results" hx-push-url="true"
-  hx-trigger="input changed delay:150ms from:#q, change from:select, change from:#fav, submit">
+  hx-trigger="input changed delay:150ms from:#q, change from:select, change from:#fav, change from:#buried, submit">
   <input id="q" name="q" type="search" value="{{.Query.Text}}" placeholder="Search highlights and notes"
     aria-label="Search" autocomplete="off"{{if not .Tag}} autofocus{{end}}>
   <div class="filters">
@@ -16,6 +16,7 @@
     </select>
     {{end}}
     <label class="check"><input id="fav" type="checkbox" name="fav" value="1"{{if .Query.Favorites}} checked{{end}}> ★ Favorites</label>
+    <label class="check"><input id="buried" type="checkbox" name="buried" value="1"{{if .Buried}} checked{{end}}> Buried</label>
   </div>
 </form>
 <div id="results" aria-live="polite">{{template "results" .}}</div>
@@ -36,7 +37,7 @@
     {{template "results-page" .}}
   </div>
   {{else}}
-  <p class="empty">{{if or .Query.Text .Query.BookID .Query.TagID}}No highlights match.{{else if .Query.Favorites}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights yet. Import them with <code>cmpl import</code>.{{end}}</p>
+  <p class="empty">{{if or .Query.Text .Query.BookID .Query.TagID}}No highlights match.{{else if .Buried}}Nothing is buried.{{else if .Query.Favorites}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights yet. Import them with <code>cmpl import</code>.{{end}}</p>
   {{with .Fallback}}<p class="fallback">Keyword matches only: {{.}}.</p>{{end}}
   {{end}}
 {{end}}

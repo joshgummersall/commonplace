@@ -208,7 +208,7 @@
     [["gt"], "Tags", () => (location.href = "/tags")],
     ["Act"],
     [["f"], "Favorite", () => act("favorite", "quote")],
-    [["b"], "Bury / unbury: hide from Daily, keep in Search", bury],
+    [["b"], "Bury / unbury: hide from Daily and Search (asks first)", bury],
     [["x", "dd"], "Delete selected note or tag", () => act("delete", "note") || act("delete", "tag")],
     [["u"], "Undo", undo],
     [["yy"], "Copy quote with source", yank],

@@ -204,17 +204,37 @@ func TestFavoriteAndBury(t *testing.T) {
 	_, body = h.do("POST", path+"/favorite", nil, true)
 	mustContain(t, body, `aria-pressed="false"`)
 
+	// Bury asks first; cancelling changes nothing.
+	_, body = h.do("GET", path+"/bury", nil, true)
+	mustContain(t, body, "is-confirming", "Bury this quote?", fmt.Sprintf(`hx-post="/h/%d/bury"`, id))
+	_, body = h.do("GET", path+"/card", nil, true)
+	mustContain(t, body, `data-action="bury"`)
+	mustNotContain(t, body, "is-confirming", "is-buried")
+
+	// In a list, a buried quote leaves a line with Undo.
 	_, body = h.do("POST", path+"/bury", nil, true)
-	mustContain(t, body, "is-buried", "Buried: hidden from Daily", "Unbury")
+	mustContain(t, body, "buried-note", "Undo")
 	if got := h.get("/"); !strings.Contains(got, "Nothing to resurface") {
 		t.Error("buried highlight still in the daily shuffle")
 	}
-	// Buried highlights stay searchable.
-	mustContain(t, h.get("/search?q=impediment"), "is-buried")
+	// Search leaves it out unless the Buried filter is on.
+	quote := fmt.Sprintf(`data-item="quote" data-id="%d"`, id)
+	mustNotContain(t, h.get("/search?q=impediment"), quote)
+	mustNotContain(t, h.get("/search"), quote, "Meditations (1)")
+	buried := h.get("/search?buried=1")
+	mustContain(t, buried, "is-buried", quote, `id="buried" type="checkbox" name="buried" value="1" checked`)
+	// Its own page still shows it, and burying there keeps the card.
+	mustContain(t, h.get(path), "Buried: hidden from Daily and Search", "Unbury")
+	_, body = h.do("POST", path+"/unbury?detail=1", nil, true)
+	mustContain(t, body, ">Bury<", "More like this ↓")
+	_, body = h.do("POST", path+"/bury?detail=1", nil, true)
+	mustContain(t, body, "is-buried", "Unbury")
 
 	_, body = h.do("POST", path+"/unbury", nil, true)
 	mustNotContain(t, body, "is-buried")
 	mustContain(t, body, ">Bury<")
+	mustContain(t, h.get("/search?q=impediment"), quote)
+	mustContain(t, h.get("/search?buried=1"), "Nothing is buried.")
 
 	if status, _ := h.do("POST", "/h/9999/favorite", nil, true); status != http.StatusNotFound {
 		t.Errorf("favorite missing highlight = %d, want 404", status)

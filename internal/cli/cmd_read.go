@@ -209,7 +209,7 @@ func resolveTag(s *store.Store, arg string) (int64, error) {
 
 // resolveBook turns --book into a book id (see resolve).
 func resolveBook(s *store.Store, arg string) (int64, error) {
-	books, err := s.Books()
+	books, err := s.Books(true)
 	if err != nil {
 		return 0, err
 	}
@@ -349,7 +349,7 @@ Each highlight adds "score".`,
 			if _, err := s.Entry(ids[0]); err != nil {
 				return fmt.Errorf("no highlight with id %d", ids[0])
 			}
-			other, same, ok, err := search.New(s, a.embedder()).Index.SimilarEntries(ids[0], limit)
+			other, same, ok, err := search.New(s, a.embedder()).Index.SimilarEntries(ids[0], limit, nil)
 			if err != nil {
 				return err
 			}
@@ -408,7 +408,7 @@ The JSON output is an array:
 			if err != nil {
 				return err
 			}
-			books, err := s.Books()
+			books, err := s.Books(true)
 			if err != nil {
 				return err
 			}

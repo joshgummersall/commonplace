@@ -17,8 +17,8 @@ func (s *Store) SetFavorite(id int64, favorite bool) error {
 	return s.execOne(`UPDATE highlights SET favorite = ? WHERE id = ?`, favorite, id)
 }
 
-// SetBuried hides a highlight from the daily shuffle, or brings it back.
-// It stays searchable either way.
+// SetBuried hides a highlight from the daily shuffle and the web app, or
+// brings it back. The CLI lists it either way.
 func (s *Store) SetBuried(id int64, buried bool) error {
 	return s.execOne(`UPDATE highlights SET buried = ? WHERE id = ?`, buried, id)
 }
@@ -31,11 +31,32 @@ type BookCount struct {
 	Count  int
 }
 
-// Books lists books that have highlights, by title.
-func (s *Store) Books() ([]BookCount, error) {
+// BuriedIDs returns the set of buried highlights.
+func (s *Store) BuriedIDs() (map[int64]bool, error) {
+	rows, err := s.db.Query(`SELECT id FROM highlights WHERE buried = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[int64]bool)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// Books lists books that have highlights, by title. Without withBuried,
+// buried highlights aren't counted, and a book with only buried ones is
+// left out.
+func (s *Store) Books(withBuried bool) ([]BookCount, error) {
 	rows, err := s.db.Query(`SELECT b.id, b.title, b.author, count(h.id)
 		FROM books b JOIN highlights h ON h.book_id = b.id
-		GROUP BY b.id ORDER BY b.title COLLATE NOCASE, b.author`)
+		WHERE ? OR h.buried = 0
+		GROUP BY b.id ORDER BY b.title COLLATE NOCASE, b.author`, withBuried)
 	if err != nil {
 		return nil, err
 	}

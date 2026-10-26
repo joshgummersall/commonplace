@@ -70,7 +70,9 @@ cmpl serve          # http://127.0.0.1:8420
   for that quote.
 - **A quote's page** holds its notes (from the device and your own, editable)
   and a *More like this* panel of related highlights, other books first.
-- **Bury** hides a quote from Daily; it stays in Search.
+- **Bury** hides a quote from Daily and Search, after asking. The Buried
+  filter on Search lists buried quotes so you can unbury one; the read
+  commands below still list them, marked.
 
 The app has no login. It listens on localhost; only use `--host 0.0.0.0` on a
 network you trust.

@@ -1,7 +1,7 @@
 {{define "card"}}
-<article class="card{{if .Buried}} is-buried{{end}}" id="h-{{.ID}}" data-item="quote" data-id="{{.ID}}" tabindex="-1">
+<article class="card{{if .Buried}} is-buried{{end}}{{if .ConfirmBury}} is-confirming{{end}}" id="h-{{.ID}}" data-item="quote" data-id="{{.ID}}" tabindex="-1">
   {{if .Buried}}
-  <p class="buried-banner">Buried: hidden from Daily, still in Search.</p>
+  <p class="buried-banner">Buried: hidden from Daily and Search. The Buried filter on Search finds it.</p>
   {{end}}
   <blockquote data-yank>
     {{if .Snippet}}
@@ -18,6 +18,19 @@
     {{with .Location}}<span class="loc">{{.}}</span>{{end}}
   </footer>
   {{template "card-tags" .}}
+  {{if .ConfirmBury}}
+  <div class="confirm-bury">
+    <p>Bury this quote? It leaves Daily and Search; the Buried filter on Search still finds it.</p>
+    <div class="form-actions">
+      <button type="button" class="danger" autofocus
+        hx-post="/h/{{.ID}}/bury{{if .Detail}}?detail=1{{end}}" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
+      {{/* Hidden: Esc clicks it. */}}
+      <button type="button" data-action="cancel" hidden
+        hx-get="/h/{{.ID}}/card{{if .Detail}}?detail=1{{end}}" hx-target="closest .card" hx-swap="outerHTML">Cancel</button>
+      <span class="hint"><kbd>↩</kbd> buries · <kbd>Esc</kbd> cancels</span>
+    </div>
+  </div>
+  {{else}}
   <div class="actions">
     {{template "favorite" .}}
     {{if not .Detail}}
@@ -27,17 +40,24 @@
     <a class="button" href="#similar" data-action="similar" title="Similar highlights (s)">More like this ↓</a>
     {{end}}
     {{if .Buried}}
-    <button type="button" data-action="unbury" title="Show in Daily again (b)"
-      hx-post="/h/{{.ID}}/unbury" hx-target="closest .card" hx-swap="outerHTML">Unbury</button>
+    <button type="button" data-action="unbury" title="Show in Daily and Search again (b)"
+      hx-post="/h/{{.ID}}/unbury{{if .Detail}}?detail=1{{end}}" hx-target="closest .card" hx-swap="outerHTML">Unbury</button>
     {{else}}
-    <button type="button" data-action="bury" title="Hide from Daily; it stays in Search (b)"
-      hx-post="/h/{{.ID}}/bury" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
+    <button type="button" data-action="bury" title="Hide from Daily and Search (b)"
+      hx-get="/h/{{.ID}}/bury{{if .Detail}}?detail=1{{end}}" hx-target="closest .card" hx-swap="outerHTML">Bury</button>
     {{end}}
   </div>
+  {{end}}
   {{with .Why}}
   <p class="why"><span class="visually-hidden">Listed because: </span>{{range $i, $r := .}}{{if $i}} · {{end}}{{$r}}{{end}}</p>
   {{end}}
 </article>
+{{end}}
+
+{{/* What a buried quote leaves in a list. */}}
+{{define "buried"}}
+<p class="buried-note" id="h-{{.ID}}">Buried a quote from {{.BookTitle}}.
+  <button type="button" class="link" hx-post="/h/{{.ID}}/unbury" hx-target="#h-{{.ID}}" hx-swap="outerHTML">Undo</button></p>
 {{end}}
 
 {{define "favorite"}}

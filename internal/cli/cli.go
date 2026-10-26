@@ -108,8 +108,8 @@ The library:
   favorite   A highlight marked as a favorite in the web app. Favorites
              come up more often in the daily set; --favorites filters to
              them.
-  buried     A highlight hidden from the daily set. It still appears in
-             list and search, marked "buried".
+  buried     A highlight hidden from the daily set and the web app. It
+             still appears in list and search here, marked "buried".
   tag        A label on highlights, set in the web app. The app suggests
              tags from what similar highlights carry; a suggestion stays
              marked until it is confirmed. cmpl tags lists them, and --tag

@@ -271,7 +271,7 @@ func TestIndex(t *testing.T) {
 	ix := sr.Index
 	fortune := ids["Fortune favors the prepared, but chance decides the rest."]
 
-	other, same, ok, err := ix.Similar(fortune, 2)
+	other, same, ok, err := ix.Similar(fortune, 2, nil)
 	if err != nil || !ok {
 		t.Fatalf("Similar: ok %v, err %v", ok, err)
 	}
@@ -295,7 +295,7 @@ func TestIndex(t *testing.T) {
 	if n, _ := ix.Size(); n != before-1 {
 		t.Errorf("index size %d after a delete, want %d", n, before-1)
 	}
-	if _, _, ok, _ := ix.Similar(fortune, 2); ok {
+	if _, _, ok, _ := ix.Similar(fortune, 2, nil); ok {
 		t.Error("Similar ok for a highlight without a vector")
 	}
 	embedding.Backfill(context.Background(), sr.Store, conceptEmbedder{}, nil)
@@ -378,5 +378,64 @@ func TestHybridPartialWordMatches(t *testing.T) {
 	}
 	if p.MeaningOnly > SemanticK {
 		t.Errorf("MeaningOnly %d exceeds the cap", p.MeaningOnly)
+	}
+}
+
+func TestRunBuried(t *testing.T) {
+	sr, ids := newSearcher(t, conceptEmbedder{}, library)
+	ctx := context.Background()
+	luck := ids["Luck plays a part, but process makes a team."]
+	fortune := ids["Fortune favors the prepared, but chance decides the rest."]
+	for _, id := range []int64{luck, fortune} {
+		if err := sr.Store.SetBuried(id, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	has := func(p Page, id int64) bool {
+		for _, r := range p.Results {
+			if r.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	for _, tt := range []struct {
+		name   string
+		buried Buried
+		want   bool // the buried ones are listed
+		others bool // anything else is listed
+	}{
+		{"included", BuriedIncluded, true, true},
+		{"hidden", BuriedHidden, false, true},
+		{"only", BuriedOnly, true, false},
+	} {
+		for _, text := range []string{"luck", ""} { // hybrid, then listing
+			p, err := sr.Run(ctx, Query{Text: text, Buried: tt.buried}, ModeHybrid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if has(p, luck) != tt.want || (text != "" && has(p, fortune) != tt.want) {
+				t.Errorf("%s %q: buried listed = %v, want %v", tt.name, text, !tt.want, tt.want)
+			}
+			others := false
+			for _, r := range p.Results {
+				others = others || (r.ID != luck && r.ID != fortune)
+			}
+			if others != tt.others {
+				t.Errorf("%s %q: others listed = %v, want %v", tt.name, text, others, tt.others)
+			}
+		}
+	}
+
+	// Similar leaves out what keep rejects.
+	other, _, _, err := sr.Index.Similar(ids["Most success is random noise mistaken for skill."], 5,
+		func(v store.Vector) bool { return v.HighlightID != luck })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range other {
+		if h.ID == luck {
+			t.Error("Similar kept a rejected highlight")
+		}
 	}
 }
