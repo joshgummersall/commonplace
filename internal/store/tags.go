@@ -397,23 +397,3 @@ func (s *Store) SuggestTags(suggest map[int64][]int64) (int, error) {
 	})
 	return added, err
 }
-
-// CountHighlights counts every highlight.
-func (s *Store) CountHighlights() (int, error) {
-	var n int
-	err := s.db.QueryRow(`SELECT count(*) FROM highlights`).Scan(&n)
-	return n, err
-}
-
-// EmbeddedText is an embedded highlight, as grouping needs it.
-type EmbeddedText struct {
-	ID     int64
-	BookID int64
-	Text   string
-	Vec    []float32
-}
-
-// EmbeddedTexts loads every highlight embedded by model, with its text.
-func (s *Store) EmbeddedTexts(model string) ([]EmbeddedText, error) {
-	return s.embedded(model, true)
-}

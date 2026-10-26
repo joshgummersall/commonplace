@@ -115,6 +115,19 @@ func (s *Store) embedded(model string, withText bool) ([]EmbeddedText, error) {
 	return out, rows.Err()
 }
 
+// EmbeddedText is an embedded highlight, as grouping needs it.
+type EmbeddedText struct {
+	ID     int64
+	BookID int64
+	Text   string
+	Vec    []float32
+}
+
+// EmbeddedTexts loads every highlight embedded by model, with its text.
+func (s *Store) EmbeddedTexts(model string) ([]EmbeddedText, error) {
+	return s.embedded(model, true)
+}
+
 // EmbeddingStamp fingerprints model's embeddings cheaply: it changes
 // whenever one is added, replaced, or deleted, so an in-memory copy knows
 // when to reload.
