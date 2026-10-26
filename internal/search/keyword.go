@@ -221,7 +221,7 @@ func clauses(q Query) (from, where string, args []any, ranked bool) {
 		args = append(args, q.BookID)
 	}
 	if q.TagID != 0 {
-		conds = append(conds, "h.id IN (SELECT highlight_id FROM highlight_tags WHERE tag_id = ? AND state != 'no')")
+		conds = append(conds, "h.id IN (SELECT ht.highlight_id FROM highlight_tags ht WHERE ht.tag_id = ? AND "+store.LiveTagSQL+")")
 		args = append(args, q.TagID)
 	}
 	if q.Favorites {

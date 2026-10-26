@@ -7,15 +7,29 @@ import (
 	"strings"
 )
 
+// TagState is where a highlight's tag stands, as highlight_tags.state
+// stores it.
+type TagState string
+
 // A highlight's tag is in one of three states.
 const (
 	// TagAuto marks a tag the app suggested and you haven't confirmed.
-	TagAuto = "auto"
+	TagAuto TagState = "auto"
 	// TagYes marks a tag you set or confirmed.
-	TagYes = "yes"
+	TagYes TagState = "yes"
 	// TagNo marks a tag you removed; the app never suggests it again for
 	// that highlight.
-	TagNo = "no"
+	TagNo TagState = "no"
+)
+
+// SQL conditions on highlight_tags ht, built from the states above.
+const (
+	// LiveTagSQL holds for a tag a highlight carries: set or suggested,
+	// not removed.
+	LiveTagSQL = `ht.state != '` + string(TagNo) + `'`
+	// suggestedTag holds for a tag the app suggested and you haven't
+	// confirmed.
+	suggestedTag = `ht.state = '` + string(TagAuto) + `'`
 )
 
 // Tag is a tag as lists show it. Counts leave out highlights you removed
@@ -68,8 +82,8 @@ func CleanTagName(name string) (string, error) {
 // tags loads tag summaries matching where (on tags g), by name.
 func (s *Store) tags(where string, args ...any) ([]Tag, error) {
 	rows, err := s.db.Query(`SELECT g.id, g.name,
-			coalesce(sum(ht.state != 'no' AND h.buried = 0), 0), coalesce(sum(ht.state = 'auto' AND h.buried = 0), 0),
-			count(DISTINCT CASE WHEN ht.state != 'no' AND h.buried = 0 THEN h.book_id END)
+			coalesce(sum(`+LiveTagSQL+` AND h.buried = 0), 0), coalesce(sum(`+suggestedTag+` AND h.buried = 0), 0),
+			count(DISTINCT CASE WHEN `+LiveTagSQL+` AND h.buried = 0 THEN h.book_id END)
 		FROM tags g
 		LEFT JOIN highlight_tags ht ON ht.tag_id = g.id
 		LEFT JOIN highlights h ON h.id = ht.highlight_id
@@ -121,7 +135,7 @@ func (s *Store) tagBooks(ids []int64) (map[int64][]BookCount, error) {
 				row_number() OVER (PARTITION BY ht.tag_id
 					ORDER BY count(*) DESC, b.title COLLATE NOCASE) AS pos
 			FROM highlight_tags ht JOIN highlights h ON h.id = ht.highlight_id JOIN books b ON b.id = h.book_id
-			WHERE ht.tag_id IN (`+placeholders(len(ids))+`) AND ht.state != 'no' AND h.buried = 0
+			WHERE ht.tag_id IN (`+placeholders(len(ids))+`) AND `+LiveTagSQL+` AND h.buried = 0
 			GROUP BY ht.tag_id, b.id)
 		WHERE pos <= ? ORDER BY tag_id, pos`, append(int64Args(ids), topBooks)...)
 	if err != nil {
@@ -172,9 +186,9 @@ func (s *Store) TagsOf(ids []int64) (map[int64][]TagRef, error) {
 	if len(ids) == 0 {
 		return out, nil
 	}
-	rows, err := s.db.Query(`SELECT ht.highlight_id, g.id, g.name, ht.state = 'auto' FROM highlight_tags ht
+	rows, err := s.db.Query(`SELECT ht.highlight_id, g.id, g.name, `+suggestedTag+` FROM highlight_tags ht
 		JOIN tags g ON g.id = ht.tag_id
-		WHERE ht.highlight_id IN (`+placeholders(len(ids))+`) AND ht.state != 'no'
+		WHERE ht.highlight_id IN (`+placeholders(len(ids))+`) AND `+LiveTagSQL+`
 		ORDER BY g.name`, int64Args(ids)...)
 	if err != nil {
 		return nil, err
@@ -195,7 +209,7 @@ func (s *Store) TagsOf(ids []int64) (map[int64][]TagRef, error) {
 func (s *Store) UntaggedCount() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT count(*) FROM highlights
-		WHERE buried = 0 AND id NOT IN (SELECT highlight_id FROM highlight_tags WHERE state != 'no')`).Scan(&n)
+		WHERE buried = 0 AND id NOT IN (SELECT ht.highlight_id FROM highlight_tags ht WHERE ` + LiveTagSQL + `)`).Scan(&n)
 	return n, err
 }
 
@@ -204,7 +218,7 @@ func (s *Store) UntaggedCount() (int, error) {
 func (s *Store) UnconfirmedCount() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT count(DISTINCT ht.highlight_id) FROM highlight_tags ht
-		JOIN highlights h ON h.id = ht.highlight_id WHERE ht.state = 'auto' AND h.buried = 0`).Scan(&n)
+		JOIN highlights h ON h.id = ht.highlight_id WHERE ` + suggestedTag + ` AND h.buried = 0`).Scan(&n)
 	return n, err
 }
 
@@ -219,32 +233,32 @@ func (s *Store) SetTags(hid int64, names []string) error {
 		} else if err != nil {
 			return err
 		}
-		keep := []any{hid}
+		var keep []any
 		for _, raw := range names {
 			name, err := CleanTagName(raw)
 			if err != nil {
 				return err
 			}
-			var id int64
-			if err := t.tx.QueryRow(`INSERT INTO tags (name) VALUES (?)
-				ON CONFLICT (name) DO UPDATE SET name = name RETURNING id`, name).Scan(&id); err != nil {
+			id, err := t.tagID(name)
+			if err != nil {
 				return err
 			}
-			if _, err := t.tx.Exec(`INSERT INTO highlight_tags (highlight_id, tag_id, state) VALUES (?, ?, 'yes')
-				ON CONFLICT DO UPDATE SET state = 'yes'`, hid, id); err != nil {
+			if _, err := t.tx.Exec(`INSERT INTO highlight_tags (highlight_id, tag_id, state) VALUES (?, ?, ?)
+				ON CONFLICT DO UPDATE SET state = excluded.state`, hid, id, TagYes); err != nil {
 				return err
 			}
 			keep = append(keep, id)
 		}
-		_, err := t.tx.Exec(`UPDATE highlight_tags SET state = 'no'
-			WHERE highlight_id = ? AND state != 'no' AND tag_id NOT IN (`+placeholders(len(keep)-1)+`)`, keep...)
+		_, err := t.tx.Exec(`UPDATE highlight_tags AS ht SET state = ?
+			WHERE ht.highlight_id = ? AND `+LiveTagSQL+` AND ht.tag_id NOT IN (`+placeholders(len(keep))+`)`,
+			append([]any{TagNo, hid}, keep...)...)
 		return err
 	})
 }
 
 // ConfirmTags confirms every tag the app suggested for a highlight.
 func (s *Store) ConfirmTags(hid int64) error {
-	_, err := s.db.Exec(`UPDATE highlight_tags SET state = 'yes' WHERE highlight_id = ? AND state = 'auto'`, hid)
+	_, err := s.db.Exec(`UPDATE highlight_tags AS ht SET state = ? WHERE ht.highlight_id = ? AND `+suggestedTag, TagYes, hid)
 	return err
 }
 
@@ -303,15 +317,26 @@ func (s *Store) MergeTag(from, into int64) error {
 // tag you set wins over one you removed, which wins over a suggestion.
 func (t *Tx) mergeTag(from, into int64) error {
 	if _, err := t.tx.Exec(`INSERT INTO highlight_tags (highlight_id, tag_id, state)
-		SELECT highlight_id, ?, state FROM highlight_tags WHERE tag_id = ?
+		SELECT highlight_id, :into, state FROM highlight_tags WHERE tag_id = :from
 		ON CONFLICT DO UPDATE SET state = CASE
-			WHEN 'yes' IN (state, excluded.state) THEN 'yes'
-			WHEN 'no' IN (state, excluded.state) THEN 'no'
-			ELSE 'auto' END`, into, from); err != nil {
+			WHEN :yes IN (state, excluded.state) THEN :yes
+			WHEN :no IN (state, excluded.state) THEN :no
+			ELSE :auto END`,
+		sql.Named("into", into), sql.Named("from", from),
+		sql.Named("yes", TagYes), sql.Named("no", TagNo), sql.Named("auto", TagAuto)); err != nil {
 		return err
 	}
 	_, err := t.tx.Exec(`DELETE FROM tags WHERE id = ?`, from)
 	return err
+}
+
+// tagID returns the id of the tag with this name, matching ignoring case,
+// creating it if needed.
+func (t *Tx) tagID(name string) (int64, error) {
+	var id int64
+	err := t.tx.QueryRow(`INSERT INTO tags (name) VALUES (?)
+		ON CONFLICT (name) DO UPDATE SET name = name RETURNING id`, name).Scan(&id)
+	return id, err
 }
 
 // DeleteTag deletes a tag from every highlight.
@@ -336,15 +361,14 @@ func (s *Store) SeedTags(seeds []SeedTag) error {
 			if err != nil {
 				return fmt.Errorf("tag %q: %w", sd.Name, err)
 			}
-			var id int64
-			if err := t.tx.QueryRow(`INSERT INTO tags (name) VALUES (?)
-				ON CONFLICT (name) DO UPDATE SET name = name RETURNING id`, name).Scan(&id); err != nil {
+			id, err := t.tagID(name)
+			if err != nil {
 				return err
 			}
 			// A highlight deleted since seeding began is skipped.
 			for _, hid := range sd.Members {
 				if _, err := t.tx.Exec(`INSERT OR IGNORE INTO highlight_tags (highlight_id, tag_id, state)
-					SELECT id, ?, 'auto' FROM highlights WHERE id = ?`, id, hid); err != nil {
+					SELECT id, ?, ? FROM highlights WHERE id = ?`, id, TagAuto, hid); err != nil {
 					return err
 				}
 			}
@@ -355,21 +379,21 @@ func (s *Store) SeedTags(seeds []SeedTag) error {
 
 // HighlightTags returns every highlight's tags, removed ones included, as
 // tag id to state, for suggesting tags.
-func (s *Store) HighlightTags() (map[int64]map[int64]string, error) {
+func (s *Store) HighlightTags() (map[int64]map[int64]TagState, error) {
 	rows, err := s.db.Query(`SELECT highlight_id, tag_id, state FROM highlight_tags`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make(map[int64]map[int64]string)
+	out := make(map[int64]map[int64]TagState)
 	for rows.Next() {
 		var hid, tid int64
-		var state string
+		var state TagState
 		if err := rows.Scan(&hid, &tid, &state); err != nil {
 			return nil, err
 		}
 		if out[hid] == nil {
-			out[hid] = make(map[int64]string)
+			out[hid] = make(map[int64]TagState)
 		}
 		out[hid][tid] = state
 	}
@@ -385,7 +409,7 @@ func (s *Store) SuggestTags(suggest map[int64][]int64) (int, error) {
 		for hid, tids := range suggest {
 			for _, tid := range tids {
 				res, err := t.tx.Exec(`INSERT OR IGNORE INTO highlight_tags (highlight_id, tag_id, state)
-					SELECT ?, id, 'auto' FROM tags WHERE id = ?`, hid, tid)
+					SELECT ?, id, ? FROM tags WHERE id = ?`, hid, TagAuto, tid)
 				if err != nil {
 					return err
 				}

@@ -39,7 +39,7 @@ func addHighlights(t *testing.T, s *Store, n int, books ...string) []int64 {
 }
 
 // states returns a highlight's tags by name, with their states.
-func states(t *testing.T, s *Store, hid int64) map[string]string {
+func states(t *testing.T, s *Store, hid int64) map[string]TagState {
 	t.Helper()
 	rows, err := s.db.Query(`SELECT g.name, ht.state FROM highlight_tags ht JOIN tags g ON g.id = ht.tag_id
 		WHERE ht.highlight_id = ?`, hid)
@@ -47,9 +47,10 @@ func states(t *testing.T, s *Store, hid int64) map[string]string {
 		t.Fatal(err)
 	}
 	defer rows.Close()
-	out := map[string]string{}
+	out := map[string]TagState{}
 	for rows.Next() {
-		var name, state string
+		var name string
+		var state TagState
 		if err := rows.Scan(&name, &state); err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +84,7 @@ func TestSetTagsConfirmsAddsAndRemoves(t *testing.T) {
 	if err := s.SetTags(h, []string{"risk", " Chance  of  ruin "}); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"Risk": TagYes, "Luck": TagNo, "Chance of ruin": TagYes}
+	want := map[string]TagState{"Risk": TagYes, "Luck": TagNo, "Chance of ruin": TagYes}
 	if got := states(t, s, h); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("states = %v, want %v", got, want)
 	}
@@ -132,7 +133,7 @@ func TestRenameTagMergesIntoExisting(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	set := func(hid int64, name, state string) {
+	set := func(hid int64, name string, state TagState) {
 		t.Helper()
 		if _, err := s.db.Exec(`UPDATE highlight_tags SET state = ?
 			WHERE highlight_id = ? AND tag_id = (SELECT id FROM tags WHERE name = ?)`, state, hid, name); err != nil {
@@ -157,7 +158,7 @@ func TestRenameTagMergesIntoExisting(t *testing.T) {
 	if got != into.ID {
 		t.Errorf("merged into %d, want %d", got, into.ID)
 	}
-	for i, want := range []string{TagYes, TagNo, TagNo, TagAuto} {
+	for i, want := range []TagState{TagYes, TagNo, TagNo, TagAuto} {
 		if st := states(t, s, ids[i]); len(st) != 1 || st["Growth"] != want {
 			t.Errorf("highlight %d: %v, want Growth %s", i, st, want)
 		}
