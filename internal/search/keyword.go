@@ -57,9 +57,10 @@ const (
 	FieldAuthor Field = "author"
 )
 
-// Result is one search hit.
+// Result is one search hit. Note counts and tags are filled in only on a
+// Searcher's page; Keyword leaves them unset.
 type Result struct {
-	store.Entry
+	store.Item
 	// Matched lists where the query's words were found, in display order.
 	// Empty when the highlight was found by meaning alone, or listed by a
 	// filter without a query.

@@ -160,7 +160,7 @@ func (sr *Searcher) Similar(id int64, k int, q Query) (other, same []Scored, ok 
 	if err != nil {
 		return nil, nil, false, err
 	}
-	return sr.Index.SimilarEntries(id, k, keep)
+	return sr.Index.SimilarItems(id, k, keep)
 }
 
 // keep turns q's filters into a check on vectors, or nil when q has none.
@@ -183,11 +183,14 @@ func (sr *Searcher) keyword(q Query) (Page, error) {
 	if len(rs) > lim {
 		p.Results, p.More = rs[:lim], true
 	}
+	if err := sr.items(p.Results); err != nil {
+		return Page{}, err
+	}
 	p.Total, err = Count(sr.Store, q)
 	return p, err
 }
 
-// page slices a ranked id list and loads its entries. Keyword results
+// page slices a ranked id list and loads its items. Keyword results
 // (snippets and matched fields) are kept where the keyword search produced
 // them; similar marks the ids the semantic search found.
 func (sr *Searcher) page(q Query, ranked []int64, keyword map[int64]Result, similar map[int64]bool) (Page, error) {
@@ -208,7 +211,24 @@ func (sr *Searcher) page(q Query, ranked []int64, keyword map[int64]Result, simi
 		r.Similar = similar[e.ID]
 		p.Results = append(p.Results, r)
 	}
-	return p, nil
+	return p, sr.items(p.Results)
+}
+
+// items fills in the note counts and tags of a page of results. Only the
+// page is filled, not the longer keyword list fused into it.
+func (sr *Searcher) items(rs []Result) error {
+	entries := make([]store.Entry, len(rs))
+	for i, r := range rs {
+		entries[i] = r.Entry
+	}
+	items, err := sr.Store.Items(entries, false)
+	if err != nil {
+		return err
+	}
+	for i := range rs {
+		rs[i].Item = items[i]
+	}
+	return nil
 }
 
 // Fuse merges ranked id lists with reciprocal rank fusion: each list adds

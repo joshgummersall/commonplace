@@ -102,34 +102,47 @@ func writeJSON(w io.Writer, v any) error {
 // toJSON converts entries, filling note counts and tags, and with
 // withNotes each highlight's notes.
 func toJSON(s *store.Store, entries []store.Entry, withNotes bool) ([]highlightJSON, error) {
-	items, err := s.Items(entries, withNotes)
+	items, err := s.Items(entries, false)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]highlightJSON, len(items))
 	for i, it := range items {
-		h := highlightJSON{
-			ID:        it.ID,
-			Text:      it.Text,
-			BookID:    it.BookID,
-			Title:     it.BookTitle,
-			Author:    it.BookAuthor,
-			Location:  it.Location,
-			Favorite:  it.Favorite,
-			Buried:    it.Buried,
-			NoteCount: it.NoteCount,
+		if out[i], err = itemJSON(s, it, withNotes); err != nil {
+			return nil, err
 		}
-		for _, t := range it.Tags {
-			h.Tags = append(h.Tags, tagRefJSON{t.ID, t.Name, t.Suggested})
-		}
-		if !it.HighlightedAt.IsZero() {
-			t := it.HighlightedAt.UTC()
-			h.HighlightedAt = &t
-		}
-		for _, n := range it.Notes {
-			h.Notes = append(h.Notes, noteJSON{ID: n.ID, Source: n.Source, Body: n.Body, CreatedAt: n.CreatedAt.UTC()})
-		}
-		out[i] = h
 	}
 	return out, nil
+}
+
+// itemJSON converts one item, loading its notes in full with withNotes.
+func itemJSON(s *store.Store, it store.Item, withNotes bool) (highlightJSON, error) {
+	h := highlightJSON{
+		ID:        it.ID,
+		Text:      it.Text,
+		BookID:    it.BookID,
+		Title:     it.BookTitle,
+		Author:    it.BookAuthor,
+		Location:  it.Location,
+		Favorite:  it.Favorite,
+		Buried:    it.Buried,
+		NoteCount: it.NoteCount,
+	}
+	for _, t := range it.Tags {
+		h.Tags = append(h.Tags, tagRefJSON{t.ID, t.Name, t.Suggested})
+	}
+	if !it.HighlightedAt.IsZero() {
+		t := it.HighlightedAt.UTC()
+		h.HighlightedAt = &t
+	}
+	if withNotes {
+		notes, err := s.Notes(it.ID)
+		if err != nil {
+			return highlightJSON{}, err
+		}
+		for _, n := range notes {
+			h.Notes = append(h.Notes, noteJSON{ID: n.ID, Source: n.Source, Body: n.Body, CreatedAt: n.CreatedAt.UTC()})
+		}
+	}
+	return h, nil
 }

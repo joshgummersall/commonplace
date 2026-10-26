@@ -228,22 +228,14 @@ func (s *Server) searchResults(r *http.Request, data *searchPage) error {
 		next.Offset += search.PageSize
 		data.Next = "/search?" + queryValues(next).Encode()
 	}
-	entries := make([]store.Entry, len(p.Results))
+	data.Results = make([]card, len(p.Results))
 	for i, res := range p.Results {
-		entries[i] = res.Entry
-	}
-	cards, err := s.cards(entries)
-	if err != nil {
-		return err
-	}
-	for i, res := range p.Results {
-		cards[i].Snippet = res.Snippet
-		cards[i].NoteSnippet = res.NoteSnippet
+		c := card{Item: res.Item, Snippet: res.Snippet, NoteSnippet: res.NoteSnippet}
 		for _, w := range res.Why() {
-			cards[i].Why = append(cards[i].Why, capitalize(w))
+			c.Why = append(c.Why, capitalize(w))
 		}
+		data.Results[i] = c
 	}
-	data.Results = cards
 	return nil
 }
 

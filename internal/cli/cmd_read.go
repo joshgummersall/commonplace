@@ -169,16 +169,12 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 	if err != nil {
 		return err
 	}
-	entries := make([]store.Entry, len(p.Results))
+	hs := make([]highlightJSON, len(p.Results))
 	for i, r := range p.Results {
-		entries[i] = r.Entry
-	}
-	hs, err := toJSON(s, entries, f.notes)
-	if err != nil {
-		return err
-	}
-	if text != "" {
-		for i, r := range p.Results {
+		if hs[i], err = itemJSON(s, r.Item, f.notes); err != nil {
+			return err
+		}
+		if text != "" {
 			hs[i].Why = r.Why()
 			hs[i].NoteMatch = segmentText(r.NoteSnippet)
 		}
@@ -376,15 +372,12 @@ Each highlight adds "score".`,
 
 // scored converts similar highlights, adding their scores.
 func scored(s *store.Store, hits []search.Scored, withNotes bool) ([]highlightJSON, error) {
-	entries := make([]store.Entry, len(hits))
+	hs := make([]highlightJSON, len(hits))
 	for i, h := range hits {
-		entries[i] = h.Entry
-	}
-	hs, err := toJSON(s, entries, withNotes)
-	if err != nil {
-		return nil, err
-	}
-	for i := range hs {
+		var err error
+		if hs[i], err = itemJSON(s, h.Item, withNotes); err != nil {
+			return nil, err
+		}
 		hs[i].Score = &hits[i].Score
 	}
 	return nonNil(hs), nil
