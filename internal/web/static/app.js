@@ -473,6 +473,12 @@
         sessionStorage.removeItem(storeKey);
       } catch {}
     }
+    // A freshly opened tag editor starts with the caret after the
+    // existing tags, so typing starts a new one.
+    const input = document.activeElement;
+    if (input?.matches("[data-complete-tags]") && e.target.contains(input)) {
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
     paint();
     updateMode();
   });
