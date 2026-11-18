@@ -2,8 +2,10 @@ package store
 
 import (
 	"database/sql"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -109,6 +111,60 @@ func TestBackupUsesExactPath(t *testing.T) {
 	}
 }
 
+// The database holds personal notes: what Open and Backup create is
+// private, and what already exists keeps the mode the user chose.
+func TestFileModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes do not apply on Windows")
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "a", "b", "test.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	snap := filepath.Join(root, "snap.db")
+	if err := s.Backup(snap); err != nil {
+		t.Fatal(err)
+	}
+	for p, want := range map[string]fs.FileMode{
+		filepath.Join(root, "a"):      fs.ModeDir | 0o700,
+		filepath.Join(root, "a", "b"): fs.ModeDir | 0o700,
+		path:                          0o600,
+		path + "-wal":                 0o600,
+		path + "-shm":                 0o600,
+		snap:                          0o600,
+	} {
+		if got := mode(t, p); got != want {
+			t.Errorf("%s: mode %v, want %v", p, got, want)
+		}
+	}
+
+	// Existing folders and files keep their modes.
+	shared := filepath.Join(root, "shared")
+	old := filepath.Join(shared, "old.db")
+	if err := os.Mkdir(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(old, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.Chmod(shared, 0o755)
+	os.Chmod(old, 0o644)
+	s2, err := Open(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2.Close()
+	if got := mode(t, shared); got != fs.ModeDir|0o755 {
+		t.Errorf("existing folder: mode %v, want drwxr-xr-x", got)
+	}
+	if got := mode(t, old); got != 0o644 {
+		t.Errorf("existing database: mode %v, want -rw-r--r--", got)
+	}
+}
+
 func dirNames(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -120,6 +176,15 @@ func dirNames(t *testing.T, dir string) []string {
 		names = append(names, e.Name())
 	}
 	return names
+}
+
+func mode(t *testing.T, path string) fs.FileMode {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fi.Mode()
 }
 
 func TestOpenRejectsNewerSchema(t *testing.T) {

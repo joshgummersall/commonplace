@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,16 @@ func TestBackupCommand(t *testing.T) {
 	}
 	if extra, _ := filepath.Glob(filepath.Join(dir, "*-*")); len(extra) != 1 {
 		t.Errorf("backup left companion files: %v", extra)
+	}
+	// Snapshots hold personal notes: the folder and file are private.
+	if runtime.GOOS != "windows" {
+		for p, want := range map[string]os.FileMode{dir: os.ModeDir | 0o700, snaps[0]: 0o600} {
+			if fi, err := os.Stat(p); err != nil {
+				t.Error(err)
+			} else if fi.Mode() != want {
+				t.Errorf("%s: mode %v, want %v", p, fi.Mode(), want)
+			}
+		}
 	}
 
 	s, err := store.Open(snaps[0])
