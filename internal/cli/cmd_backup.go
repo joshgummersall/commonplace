@@ -39,7 +39,9 @@ To restore, stop cmpl serve and copy a snapshot to the database path.`,
 				return fmt.Errorf("--keep must be 0 or more")
 			}
 			dir := args[0]
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+			// Snapshots hold personal notes. An existing folder keeps
+			// its mode; Backup makes each snapshot private.
+			if err := os.MkdirAll(dir, 0o700); err != nil {
 				return err
 			}
 			s, err := a.openStore()

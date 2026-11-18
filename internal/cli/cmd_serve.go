@@ -46,7 +46,9 @@ a first set from the Tags page: it groups embedded highlights by meaning
 and asks --name-model, also served by Ollama, to name each group.
 
 It listens on localhost by default. The app has no login, so only use
---host 0.0.0.0 (for example, to read on your phone) on a network you trust.`,
+--host 0.0.0.0 (for example, to read on your phone) on a network you trust.
+When listening beyond localhost, open the app by IP address (or the name
+given to --host); other host names are refused.`,
 		Example: `  cmpl serve
   cmpl serve --port 9000`,
 		Args: cobra.NoArgs,
@@ -62,6 +64,9 @@ It listens on localhost by default. The app has no login, so only use
 				Logger:   logger,
 				Embedder: e,
 				Namer:    autotag.NewOllamaNamer(a.ollamaBase(), nameModel),
+				// An IP address here adds nothing: the app answers to
+				// every IP address.
+				HostName: host,
 			})
 			if err != nil {
 				return err

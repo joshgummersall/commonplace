@@ -11,7 +11,9 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -38,6 +40,8 @@ type Server struct {
 	now    func() time.Time
 	files  fs.FS
 	dev    bool
+	// hostName is Options.HostName, normalized like a Host header.
+	hostName string
 
 	mu   sync.Mutex
 	tmpl *template.Template
@@ -54,15 +58,19 @@ type Options struct {
 	Embedder embedding.Embedder
 	// Namer names suggested tags. With Embedder, it enables suggesting a
 	// first set of tags.
-	Namer  autotag.Namer
-	Logger *slog.Logger
-	Now    func() time.Time
+	Namer autotag.Namer
+	// HostName is a host name the app answers to besides localhost and
+	// IP addresses: the name cmpl serve --host listens on.
+	HostName string
+	Logger   *slog.Logger
+	Now      func() time.Time
 }
 
 // New builds a Server. It parses templates up front so a broken template
 // fails at startup rather than on first request.
 func New(s *store.Store, opts Options) (*Server, error) {
-	srv := &Server{store: s, searcher: search.New(s, opts.Embedder), logger: opts.Logger, now: opts.Now, files: embedded}
+	srv := &Server{store: s, searcher: search.New(s, opts.Embedder), logger: opts.Logger, now: opts.Now, files: embedded,
+		hostName: hostName(opts.HostName)}
 	if srv.logger == nil {
 		srv.logger = slog.Default()
 	}
@@ -84,7 +92,8 @@ func New(s *store.Store, opts Options) (*Server, error) {
 
 // Handler returns the app's routes, wrapped in cross-origin protection:
 // the server listens on localhost, and without it any web page you visit
-// could POST to it.
+// could POST to it. Outside that, it refuses unexpected host names (see
+// checkHost).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	static, _ := fs.Sub(s.files, "static")
@@ -132,7 +141,42 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /tags/{id}/delete", s.handle(s.deleteForm))
 	mux.HandleFunc("DELETE /tags/{id}", s.handle(s.deleteTag))
 
-	return http.NewCrossOriginProtection().Handler(mux)
+	return s.checkHost(http.NewCrossOriginProtection().Handler(mux))
+}
+
+// checkHost refuses a request unless its Host header names localhost,
+// an IP address, or Options.HostName. Cross-origin protection compares
+// Origin to Host, so without this a page whose domain is rebound to
+// 127.0.0.1 (DNS rebinding) would count as same-origin and could read
+// and change everything. Rebinding needs a DNS name, so IP addresses are
+// safe, and they keep --host 0.0.0.0 usable from a phone.
+func (s *Server) checkHost(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.allowedHost(r.Host) {
+			http.Error(w, "Unknown host name. Open the app by IP address or localhost.", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) allowedHost(hostport string) bool {
+	h := hostName(hostport)
+	if _, err := netip.ParseAddr(h); err == nil {
+		return true
+	}
+	return h == "localhost" || strings.HasSuffix(h, ".localhost") || (h != "" && h == s.hostName)
+}
+
+// hostName returns the host in a Host header value, without port,
+// brackets, or a trailing dot, in lower case.
+func hostName(hostport string) string {
+	h := hostport
+	if host, _, err := net.SplitHostPort(hostport); err == nil {
+		h = host
+	}
+	h = strings.TrimSuffix(strings.TrimPrefix(h, "["), "]")
+	return strings.ToLower(strings.TrimSuffix(h, "."))
 }
 
 // httpError carries a status code for errors the user caused.

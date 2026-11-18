@@ -40,14 +40,17 @@ type Store struct {
 }
 
 // Open opens (creating if needed) the database at path and applies any
-// pending migrations.
+// pending migrations. The database holds personal notes, so a folder or
+// file Open creates is private to the user; existing ones keep their modes.
 func Open(path string) (*Store, error) {
-	if dir := filepath.Dir(path); dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, fmt.Errorf("create db dir: %w", err)
-		}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("create db dir: %w", err)
 	}
-	dsn := "file:" + path +
+	// SQLite gives the -wal and -shm files the main file's mode.
+	if err := createPrivate(path); err != nil && !errors.Is(err, fs.ErrExist) {
+		return nil, fmt.Errorf("create db: %w", err)
+	}
+	dsn := uri(path) +
 		"?_pragma=foreign_keys(1)" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=busy_timeout(5000)"
@@ -61,6 +64,32 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// createPrivate creates an empty file at path that only the user can
+// read, failing with fs.ErrExist if path exists.
+func createPrivate(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// uriEscaper escapes what SQLite reads as syntax in a URI filename: the
+// path ends at '?' or '#', and %HH is decoded. The driver also splits its
+// own parameters off at the first '?'.
+var uriEscaper = strings.NewReplacer("%", "%25", "?", "%3F", "#", "%23")
+
+// uri returns a SQLite URI filename that names exactly path. An absolute
+// path gets an empty authority (file:///...), so one that starts with //
+// is not read as a host.
+func uri(path string) string {
+	p := uriEscaper.Replace(path)
+	if strings.HasPrefix(p, "/") {
+		p = "//" + p
+	}
+	return "file:" + p
 }
 
 // Close closes the database.
@@ -161,9 +190,16 @@ func (s *Store) migrateTo(target int) error {
 
 // Backup writes a consistent copy of the database to path, which must not
 // exist. The copy is a single compacted file with no -wal or -shm
-// companions, so it is safe to put in a synced folder.
+// companions, so it is safe to put in a synced folder. It is private to
+// the user from the start: VACUUM INTO fills the empty file created here.
 func (s *Store) Backup(path string) error {
-	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
+	if err := createPrivate(path); err != nil {
+		return fmt.Errorf("back up db: %w", err)
+	}
+	// VACUUM INTO reads a name that starts with "file:" as a URI, so
+	// always pass one.
+	if _, err := s.db.Exec(`VACUUM INTO ?`, uri(path)); err != nil {
+		os.Remove(path)
 		return fmt.Errorf("back up db: %w", err)
 	}
 	return nil

@@ -358,6 +358,57 @@ func TestRejectsCrossOriginWrites(t *testing.T) {
 	}
 }
 
+// A page whose domain is rebound to 127.0.0.1 (DNS rebinding) is
+// same-origin with the app, so the app answers only to host names that
+// cannot be rebound: localhost, IP addresses, and the name --host gave.
+func TestChecksHost(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := importer.Import(s, []clippings.Clipping{clip("Meditations", "Marcus Aurelius", 10, "The impediment to action.")}, now); err != nil {
+		t.Fatal(err)
+	}
+	w, err := New(s, Options{HostName: "Reader.LAN", Now: func() time.Time { return now }, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	s.DB().QueryRow(`SELECT id FROM highlights`).Scan(&id)
+
+	send := func(method, path, host string) int {
+		req := httptest.NewRequest(method, path, nil)
+		req.Host = host
+		req.Header.Set("Origin", "http://"+host)
+		rec := httptest.NewRecorder()
+		w.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for _, host := range []string{"127.0.0.1:8420", "localhost:8420", "LOCALHOST", "localhost.:8420", "app.localhost:8420",
+		"[::1]:8420", "[::1]", "192.168.1.20:8420", "reader.lan:8420", "reader.lan."} {
+		if code := send("GET", "/", host); code != http.StatusOK {
+			t.Errorf("GET / with Host %s = %d, want 200", host, code)
+		}
+	}
+	for _, host := range []string{"evil.example:8420", "evil.example", "localhost.evil.example", "lan:8420", ""} {
+		for _, r := range []struct{ method, path string }{
+			{"GET", "/"},
+			{"GET", "/static/app.css"},
+			{"POST", fmt.Sprintf("/h/%d/favorite", id)},
+		} {
+			if code := send(r.method, r.path, host); code != http.StatusForbidden {
+				t.Errorf("%s %s with Host %q = %d, want 403", r.method, r.path, host, code)
+			}
+		}
+	}
+	var fav bool
+	s.DB().QueryRow(`SELECT favorite FROM highlights`).Scan(&fav)
+	if fav {
+		t.Error("POST with a foreign Host changed data")
+	}
+}
+
 func TestStatic(t *testing.T) {
 	h := newHarness(t)
 	for _, p := range []string{"/static/app.css", "/static/app.js", "/static/htmx-2.0.4.min.js"} {
