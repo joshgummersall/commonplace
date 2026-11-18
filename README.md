@@ -75,7 +75,8 @@ cmpl serve          # http://127.0.0.1:8420
   commands below still list them, marked.
 
 The app has no login. It listens on localhost; only use `--host 0.0.0.0` on a
-network you trust.
+network you trust, and open the app by IP address (or the name given to
+`--host`); other host names are refused.
 
 ### From the command line
 
