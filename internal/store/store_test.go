@@ -2,7 +2,9 @@ package store
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -41,6 +43,83 @@ func TestOpenIsIdempotent(t *testing.T) {
 		}
 		s.Close()
 	}
+}
+
+// A path is a file name, never URI syntax: each opens exactly that file,
+// with every pragma applied.
+func TestOpenUsesExactPath(t *testing.T) {
+	for _, name := range []string{"a?b.db", "h#1.db", "p%41.db", "with space.db", "x.db?mode=ro", "file:x.db"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			s, err := Open(filepath.Join(dir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			var fk int
+			var mode string
+			if err := s.DB().QueryRow("PRAGMA foreign_keys").Scan(&fk); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.DB().QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+				t.Fatal(err)
+			}
+			if fk != 1 || mode != "wal" {
+				t.Errorf("foreign_keys = %d, journal_mode = %q; want 1, wal", fk, mode)
+			}
+			if got := dirNames(t, dir); !slices.Equal(got, []string{name, name + "-shm", name + "-wal"}) {
+				t.Errorf("files = %q, want %q and its -shm and -wal", got, name)
+			}
+		})
+	}
+	// A relative path that starts with "file:" is a name too.
+	t.Run("relative", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Chdir(dir)
+		s, err := Open("file:x.db")
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		if got := dirNames(t, dir); !slices.Contains(got, "file:x.db") {
+			t.Errorf("files = %q, want file:x.db", got)
+		}
+	})
+}
+
+func TestBackupUsesExactPath(t *testing.T) {
+	s := openTemp(t)
+	dir := t.TempDir()
+	for _, name := range []string{"a?b.db", "h#1.db", "p%41.db", "file:x.db"} {
+		if err := s.Backup(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if got, want := dirNames(t, dir), []string{"a?b.db", "file:x.db", "h#1.db", "p%41.db"}; !slices.Equal(got, want) {
+		t.Errorf("files = %q, want %q", got, want)
+	}
+	// VACUUM INTO reads a bare name that starts with "file:" as a URI.
+	rel := t.TempDir()
+	t.Chdir(rel)
+	if err := s.Backup("file:y.db"); err != nil {
+		t.Fatal(err)
+	}
+	if got := dirNames(t, rel); !slices.Equal(got, []string{"file:y.db"}) {
+		t.Errorf("files = %q, want file:y.db", got)
+	}
+}
+
+func dirNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
 }
 
 func TestOpenRejectsNewerSchema(t *testing.T) {

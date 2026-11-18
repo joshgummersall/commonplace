@@ -47,7 +47,7 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("create db dir: %w", err)
 		}
 	}
-	dsn := "file:" + path +
+	dsn := uri(path) +
 		"?_pragma=foreign_keys(1)" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=busy_timeout(5000)"
@@ -61,6 +61,22 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// uriEscaper escapes what SQLite reads as syntax in a URI filename: the
+// path ends at '?' or '#', and %HH is decoded. The driver also splits its
+// own parameters off at the first '?'.
+var uriEscaper = strings.NewReplacer("%", "%25", "?", "%3F", "#", "%23")
+
+// uri returns a SQLite URI filename that names exactly path. An absolute
+// path gets an empty authority (file:///...), so one that starts with //
+// is not read as a host.
+func uri(path string) string {
+	p := uriEscaper.Replace(path)
+	if strings.HasPrefix(p, "/") {
+		p = "//" + p
+	}
+	return "file:" + p
 }
 
 // Close closes the database.
@@ -163,7 +179,9 @@ func (s *Store) migrateTo(target int) error {
 // exist. The copy is a single compacted file with no -wal or -shm
 // companions, so it is safe to put in a synced folder.
 func (s *Store) Backup(path string) error {
-	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
+	// VACUUM INTO reads a name that starts with "file:" as a URI, so
+	// always pass one.
+	if _, err := s.db.Exec(`VACUUM INTO ?`, uri(path)); err != nil {
 		return fmt.Errorf("back up db: %w", err)
 	}
 	return nil
