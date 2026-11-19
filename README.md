@@ -97,6 +97,17 @@ cmpl tags                          # tag ids for --tag
 These commands don't change highlights, notes, tags, favorites, or burials, and
 `cmpl daily` doesn't count as reading the day's set.
 
+To save a quote that didn't come from an e-reader, from a paper book, an
+article, or a conversation, use `cmpl add`:
+
+```
+cmpl add 'We are what we repeatedly do.' --title 'The Story of Philosophy' --author 'Will Durant'
+pbpaste | cmpl add --title Meditations --author 'Marcus Aurelius' --page 41 --tag stoicism --note 'Reread before reviews'
+```
+
+It prints the stored highlight as JSON, with `"status"` of `added`, `updated`,
+or `exists`; repeating it never stores the same text twice.
+
 ### With Claude Code
 
 This repository is also a [Claude Code](https://claude.com/claude-code)

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -73,7 +74,7 @@ Safe to run while cmpl serve is running.`,
 				return err
 			}
 			a.printImportResult(r, len(warnings))
-			a.embedAfterImport(cmd.Context(), s)
+			a.embedAfterImport(cmd.Context(), s, a.stdout)
 			return nil
 		},
 	}
@@ -98,9 +99,9 @@ func (a *App) printImportResult(r importer.Result, warnings int) {
 }
 
 // embedAfterImport embeds whatever is missing, then suggests tags for the
-// new highlights. Failing to embed never fails the import: the highlights
-// are stored, and serve retries.
-func (a *App) embedAfterImport(ctx context.Context, s *store.Store) {
+// new highlights, reporting counts to out. Failing to embed never fails the
+// import: the highlights are stored, and serve retries.
+func (a *App) embedAfterImport(ctx context.Context, s *store.Store, out io.Writer) {
 	e := a.embedder()
 	progress := func(done, total int) {
 		fmt.Fprintf(a.stderr, "\rEmbedding highlights: %d/%d", done, total)
@@ -108,11 +109,11 @@ func (a *App) embedAfterImport(ctx context.Context, s *store.Store) {
 	n, err := embedding.Backfill(ctx, s, e, progress)
 	if n > 0 {
 		fmt.Fprintln(a.stderr)
-		fmt.Fprintf(a.stdout, "%d highlights embedded with %s\n", n, e.Model())
+		fmt.Fprintf(out, "%d highlights embedded with %s\n", n, e.Model())
 		if added, err := autotag.Suggest(s, e.Model()); err != nil {
 			fmt.Fprintf(a.stderr, "warning: suggesting tags failed: %v\n", err)
 		} else if added > 0 {
-			fmt.Fprintf(a.stdout, "%d tags suggested\n", added)
+			fmt.Fprintf(out, "%d tags suggested\n", added)
 		}
 	}
 	if err != nil {

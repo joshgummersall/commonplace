@@ -116,6 +116,10 @@ Every read command prints JSON and takes ids from the others' output. A typical 
   cmpl books                      book ids, for --book
   cmpl tags                       tag ids, for --tag
 
+To save a quote that didn't come from an e-reader:
+
+  cmpl add 'text' --title 'Book' --author 'Author'
+
 Read commands never change highlights, notes, tags, favorites, or burials. Run
 cmpl help <command> for each command's flags, output, and examples.
 
@@ -143,6 +147,7 @@ unless overridden by $` + dbEnvVar + ` or --db.`,
 	}
 	manage := []*cobra.Command{
 		a.newImportCommand(),
+		a.newAddCommand(),
 		a.newServeCommand(),
 		a.newBackupCommand(),
 	}
