@@ -226,6 +226,16 @@ func (s *Store) UnconfirmedCount() (int, error) {
 // (and created if new), confirming any the app suggested, and every other
 // tag is removed. Names match existing tags ignoring case.
 func (s *Store) SetTags(hid int64, names []string) error {
+	return s.setTags(hid, names, true)
+}
+
+// AddTags sets names on a highlight as SetTags does, but keeps its other
+// tags.
+func (s *Store) AddTags(hid int64, names []string) error {
+	return s.setTags(hid, names, false)
+}
+
+func (s *Store) setTags(hid int64, names []string, removeOthers bool) error {
 	return s.InTx(func(t *Tx) error {
 		var ok bool
 		if err := t.tx.QueryRow(`SELECT 1 FROM highlights WHERE id = ?`, hid).Scan(&ok); errors.Is(err, sql.ErrNoRows) {
@@ -248,6 +258,9 @@ func (s *Store) SetTags(hid int64, names []string) error {
 				return err
 			}
 			keep = append(keep, id)
+		}
+		if !removeOthers {
+			return nil
 		}
 		_, err := t.tx.Exec(`UPDATE highlight_tags AS ht SET state = ?
 			WHERE ht.highlight_id = ? AND `+LiveTagSQL+` AND ht.tag_id NOT IN (`+placeholders(len(keep))+`)`,

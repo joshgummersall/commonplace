@@ -83,7 +83,7 @@ func Import(s *store.Store, clips []clippings.Clipping, now time.Time) (Result, 
 			kept, dropped := latestVersions(byBook[k])
 			r.Merged += dropped
 			for _, v := range kept {
-				o, err := storeVersion(tx, v, now)
+				_, o, err := storeVersion(tx, v, now)
 				if err != nil {
 					return err
 				}
@@ -103,14 +103,38 @@ func Import(s *store.Store, clips []clippings.Clipping, now time.Time) (Result, 
 	return r, nil
 }
 
-// storeVersion stores the newest version of a highlight. If the database
-// holds older versions of it, the most recent is updated in place and any
-// others are merged into it.
-func storeVersion(tx *store.Tx, v version, now time.Time) (outcome, error) {
+// Add stores one highlight given by hand (cmpl add), deduped against the
+// library as an imported one is. It returns the id of the stored highlight
+// and a Result counting what happened: Added, Replaced (an older version
+// was updated), or Unchanged or Older (it was already stored).
+func Add(s *store.Store, c clippings.Clipping, now time.Time) (int64, Result, error) {
+	var (
+		id int64
+		r  Result
+	)
+	err := s.InTx(func(tx *store.Tx) error {
+		var (
+			o   outcome
+			err error
+		)
+		id, o, err = storeVersion(tx, version{clip: c, norm: normalize(c.Text)}, now)
+		r.count(o)
+		return err
+	})
+	if err != nil {
+		return 0, Result{}, err
+	}
+	return id, r, nil
+}
+
+// storeVersion stores the newest version of a highlight and returns the
+// stored highlight's id. If the database holds older versions of it, the
+// most recent is updated in place and any others are merged into it.
+func storeVersion(tx *store.Tx, v version, now time.Time) (int64, outcome, error) {
 	c := v.clip
 	bookID, err := tx.BookID(c.Title, c.Author)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	h := &store.Highlight{
 		BookID:        bookID,
@@ -127,27 +151,28 @@ func storeVersion(tx *store.Tx, v version, now time.Time) (outcome, error) {
 
 	existing, err := tx.HighlightByHash(bookID, h.Hash)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if existing != nil {
-		return unchanged, nil
+		return existing.ID, unchanged, nil
 	}
 
 	near, err := tx.HighlightsNear(bookID, h.LocStart, h.LocEnd, h.Page)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var matches []store.Highlight
 	for _, cand := range near {
 		if sameHighlight(v.norm, normalize(cand.Text)) {
 			if newer(&cand, h) {
-				return older, nil
+				return cand.ID, older, nil
 			}
 			matches = append(matches, cand)
 		}
 	}
 	if len(matches) == 0 {
-		return added, tx.InsertHighlight(h)
+		err := tx.InsertHighlight(h)
+		return h.ID, added, err
 	}
 
 	keep := &matches[0]
@@ -162,10 +187,10 @@ func storeVersion(tx *store.Tx, v version, now time.Time) (outcome, error) {
 			continue
 		}
 		if err := tx.MergeInto(keep.ID, other.ID); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 	}
-	return replaced, tx.ReplaceHighlightText(keep.ID, h)
+	return keep.ID, replaced, tx.ReplaceHighlightText(keep.ID, h)
 }
 
 // newer reports whether stored highlight a is a later version than b.
@@ -219,7 +244,7 @@ func importNote(tx *store.Tx, c clippings.Clipping, now time.Time, r *Result) er
 	// No highlight to attach to: keep the note as a highlight of its own
 	// so it isn't lost. Highlight dedupe makes this idempotent.
 	c.Kind = clippings.Highlight
-	o, err := storeVersion(tx, version{clip: c, norm: normalize(c.Text)}, now)
+	_, o, err := storeVersion(tx, version{clip: c, norm: normalize(c.Text)}, now)
 	if err != nil {
 		return err
 	}
