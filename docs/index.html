@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Commonplace · your e-reader highlights, resurfaced</title>
-<meta name="description" content="A personal, self-hosted home for your e-reader highlights: import them, search them by words and by meaning, tag them, with suggestions from a local model, and get a daily shuffle of past highlights back.">
+<meta name="description" content="A personal, self-hosted home for your e-reader highlights: import them, search them by words and by meaning, and get a daily shuffle of past highlights back.">
 <link rel="icon" href="data:,">
 <style>
   /* Tokens and components follow internal/web/static/app.css. */
@@ -157,21 +157,6 @@
   }
   .count { font-size: 0.875rem; color: var(--muted); margin: 0 0 1rem; }
 
-  .card-tags { display: flex; flex-wrap: wrap; gap: 0.375rem 0.5rem; margin-top: 0.5rem; font-size: 0.8125rem; }
-  .tag { border: 1px solid var(--rule); border-radius: 999px; padding: 0.0625rem 0.5rem; }
-  .tag.is-suggested { color: var(--muted); border-style: dashed; }
-
-  /* Tags */
-
-  .tag-list { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
-  .tag-row { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.625rem 0.75rem; border-left: 3px solid transparent; }
-  .tag-row + .tag-row { border-top: 1px solid var(--rule); }
-  .tag-row.is-current { border-left-color: var(--accent); background: var(--accent-soft); }
-  .tag-main { flex: 1; min-width: 0; }
-  .tag-name { font-weight: 600; }
-  .tag-count { font-size: 0.8125rem; color: var(--muted); margin-left: 0.5rem; white-space: nowrap; }
-  .tag-books { margin: 0.125rem 0 0; font-size: 0.8125rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
   /* Notes */
 
   .note { border-left: 3px solid var(--rule); padding: 0.125rem 0 0.125rem 1rem; margin-top: 1rem; }
@@ -264,8 +249,7 @@
   <section class="hero">
     <h1>Your highlights, back where you'll read them.</h1>
     <p>Highlights on an e-reader pile up in <code>My Clippings.txt</code> and are never seen again.
-      Commonplace imports them, searches them by words and by meaning, suggests tags from what
-      similar highlights carry, and hands a few back each day.
+      Commonplace imports them, searches them by words and by meaning, and hands a few back each day.
       One binary, one database file, on your own machine.</p>
     <div class="actions">
       <a class="button primary" href="#install">Install</a>
@@ -283,7 +267,6 @@
         <cite>Meditations <span class="author">Marcus Aurelius</span></cite>
         <span>page 138, loc 2452-2456</span>
       </footer>
-      <div class="card-tags"><a class="tag" href="#tags">What is up to us</a><a class="tag is-suggested" href="#tags">Living simply</a></div>
       <div class="actions">
         <span class="button on">★ Favorite</span>
         <span class="button">Add a note</span>
@@ -333,47 +316,12 @@
     </article>
   </div>
 
-  <h2 id="tags">Tags</h2>
-  <p class="lede">What do you keep underlining? Commonplace can group highlights that say related things,
-    usually across books, and have a local model name each group as a suggested tag. After that, each new
-    highlight is suggested the tags most of its nearest neighbors carry. Suggestions look muted until you
-    confirm them. Fix any tag on a quote; a tag you remove is never suggested for it again.
-    Rename, merge, or delete tags as you like.</p>
-  <div class="tag-list">
-    <div class="tag-row is-current">
-      <div class="tag-main">
-        <span class="tag-name">Control and acceptance</span><span class="tag-count">41 · 9 books · 6 suggested</span>
-        <p class="tag-books">Meditations · Enchiridion · Letters from a Stoic · …</p>
-      </div>
-    </div>
-    <div class="tag-row">
-      <div class="tag-main">
-        <span class="tag-name">Living simply</span><span class="tag-count">27 · 6 books</span>
-        <p class="tag-books">Walden · Essays · Letters from a Stoic · …</p>
-      </div>
-    </div>
-    <div class="tag-row">
-      <div class="tag-main">
-        <span class="tag-name">What is up to us</span><span class="tag-count">14 · 5 books · 2 suggested</span>
-        <p class="tag-books">Enchiridion · Meditations · The Consolation of Philosophy · …</p>
-      </div>
-    </div>
-    <div class="tag-row">
-      <div class="tag-main">
-        <span class="tag-name">Writing plainly</span><span class="tag-count">18 · 5 books</span>
-        <p class="tag-books">The Elements of Style · Politics and the English Language · …</p>
-      </div>
-    </div>
-  </div>
-
   <h2>What it does</h2>
   <ul class="features">
     <li><strong>Imports Kindle and CrossPoint clippings</strong>
       <span>Re-import any time. It skips what it has, keeps the final version of a highlight you extended or trimmed, and keeps your notes.</span></li>
     <li><strong>Searches by words and meaning together</strong>
       <span>Meaning comes from a local embedding model in <a href="https://ollama.com/">Ollama</a>. Without Ollama, search falls back to words.</span></li>
-    <li><strong>Suggests tags you can correct</strong>
-      <span>Groups related highlights by meaning, named by a local model, then tags new highlights from their neighbors. Confirm, fix, or remove any tag; filter Search by tag.</span></li>
     <li><strong>Keeps notes, favorites, and burials</strong>
       <span>Write dated notes on any quote. Favorite what you want to see more; bury what you don't want to see again.</span></li>
     <li><strong>Stays on your machine</strong>
@@ -382,9 +330,8 @@
 
   <h2 id="install">Install</h2>
   <pre><code>brew install --cask joshgummersall/commonplace/commonplace</code></pre>
-  <p>For search by meaning and tag suggestions, add <a href="https://ollama.com/">Ollama</a> with an embedding model and a model to name tags (optional):</p>
-  <pre><code>ollama pull qwen3-embedding:0.6b
-ollama pull qwen2.5:14b</code></pre>
+  <p>For search by meaning, add <a href="https://ollama.com/">Ollama</a> with an embedding model (optional):</p>
+  <pre><code>ollama pull qwen3-embedding:0.6b</code></pre>
 
   <h2>Use</h2>
   <pre><code>cmpl import "/Volumes/Kindle/documents/My Clippings.txt"
@@ -395,18 +342,16 @@ cmpl serve                     <span class="c"># http://127.0.0.1:8420</span></c
   <dl class="keys">
     <dt><kbd>j</kbd> <kbd>k</kbd> <kbd>gg</kbd> <kbd>G</kbd></dt><dd>Move between quotes, with counts (<kbd>5j</kbd>)</dd>
     <dt><kbd>o</kbd> / <kbd>h</kbd></dt><dd>Open a quote / go back</dd>
-    <dt><kbd>/</kbd> <kbd>gd</kbd> <kbd>gt</kbd> <kbd>gf</kbd></dt><dd>Search, Daily, Tags, favorites only</dd>
-    <dt><kbd>t</kbd> <kbd>T</kbd></dt><dd>Edit the quote's tags, confirm its suggested tags</dd>
+    <dt><kbd>/</kbd> <kbd>gd</kbd> <kbd>gf</kbd></dt><dd>Search, Daily, favorites only</dd>
     <dt><kbd>f</kbd> <kbd>b</kbd> <kbd>s</kbd></dt><dd>Favorite, bury, more like this</dd>
-    <dt><kbd>i</kbd> <kbd>cc</kbd> <kbd>dd</kbd></dt><dd>Write, edit, delete a note; on the Tags page, rename or delete a tag</dd>
-    <dt><kbd>m</kbd></dt><dd>Merge a tag into another, on the Tags page</dd>
+    <dt><kbd>i</kbd> <kbd>cc</kbd> <kbd>dd</kbd></dt><dd>Write, edit, delete a note</dd>
     <dt><kbd>yy</kbd> <kbd>u</kbd></dt><dd>Copy the quote with its source, undo</dd>
   </dl>
 
   <h2>For agents</h2>
   <p class="lede">Read commands print JSON, so an agent such as Claude Code can work with your library.
     <code>cmpl help</code> documents every command. They never change your highlights.
-    <code>cmpl tags</code> lists tags, and <code>--tag</code> narrows <code>list</code> and <code>search</code> to one.</p>
+    <code>cmpl books</code> lists books, and <code>--book</code> narrows <code>list</code> and <code>search</code> to one.</p>
   <pre><code>cmpl search 'fear of failure' --limit 1
 <span class="c">{
   "total": 14,
@@ -417,7 +362,6 @@ cmpl serve                     <span class="c"># http://127.0.0.1:8420</span></c
       "text": "We suffer more often in imagination than in reality.",
       "title": "Letters from a Stoic",
       "author": "Seneca",
-      "tags": [{"id": 31, "name": "Fear of what hasn't happened"}],
       "why": ["similar in meaning"],
       ...
     }

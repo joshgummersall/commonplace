@@ -13,7 +13,6 @@ import (
 type Query struct {
 	Text      string
 	BookID    int64 // 0 means any book
-	TagID     int64 // 0 means any tag; else only highlights with it
 	Favorites bool  // only favorites
 	Buried    Buried
 	Limit     int // 0 means PageSize
@@ -219,10 +218,6 @@ func clauses(q Query) (from, where string, args []any, ranked bool) {
 	if q.BookID != 0 {
 		conds = append(conds, "h.book_id = ?")
 		args = append(args, q.BookID)
-	}
-	if q.TagID != 0 {
-		conds = append(conds, "h.id IN (SELECT ht.highlight_id FROM highlight_tags ht WHERE ht.tag_id = ? AND "+store.LiveTagSQL+")")
-		args = append(args, q.TagID)
 	}
 	if q.Favorites {
 		conds = append(conds, "h.favorite = 1")

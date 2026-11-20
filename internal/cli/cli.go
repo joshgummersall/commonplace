@@ -102,11 +102,6 @@ The library:
              them.
   buried     A highlight hidden from the daily set and the web app. It
              still appears in list and search here, marked "buried".
-  tag        A label on highlights, set in the web app. The app suggests
-             tags from what similar highlights carry; a suggestion stays
-             marked until it is confirmed. cmpl tags lists them, and --tag
-             filters to one.
-
 Every read command prints JSON and takes ids from the others' output. A typical session:
 
   cmpl daily                      today's highlights
@@ -114,13 +109,12 @@ Every read command prints JSON and takes ids from the others' output. A typical 
   cmpl show 412                   one highlight in full, with notes
   cmpl similar 412                highlights close in meaning to it
   cmpl books                      book ids, for --book
-  cmpl tags                       tag ids, for --tag
 
 To save a quote that didn't come from an e-reader:
 
   cmpl add 'text' --title 'Book' --author 'Author'
 
-Read commands never change highlights, notes, tags, favorites, or burials. Run
+Read commands never change highlights, notes, favorites, or burials. Run
 cmpl help <command> for each command's flags, output, and examples.
 
 The database is $XDG_DATA_HOME/commonplace/commonplace.db
@@ -143,7 +137,6 @@ unless overridden by $` + dbEnvVar + ` or --db.`,
 		a.newShowCommand(),
 		a.newSimilarCommand(),
 		a.newBooksCommand(),
-		a.newTagsCommand(),
 	}
 	manage := []*cobra.Command{
 		a.newImportCommand(),

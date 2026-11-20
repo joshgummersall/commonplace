@@ -3,18 +3,12 @@
   hx-get="/search" hx-target="#results" hx-push-url="true"
   hx-trigger="input changed delay:150ms from:#q, change from:select, change from:#fav, change from:#buried, submit">
   <input id="q" name="q" type="search" value="{{.Query.Text}}" placeholder="Search highlights and notes"
-    aria-label="Search" autocomplete="off"{{if not .Tag}} autofocus{{end}}>
+    aria-label="Search" autocomplete="off" autofocus>
   <div class="filters">
     <select name="book" aria-label="Book">
       <option value="">All books</option>
       {{range .Books}}<option value="{{.ID}}"{{if eq .ID $.Query.BookID}} selected{{end}}>{{.Title}} ({{.Count}})</option>{{end}}
     </select>
-    {{if .Tags}}
-    <select name="tag" aria-label="Tag">
-      <option value="">All tags</option>
-      {{range .Tags}}<option value="{{.ID}}"{{if eq .ID $.Query.TagID}} selected{{end}}>{{.Name}} ({{.Count}})</option>{{end}}
-    </select>
-    {{end}}
     <label class="check"><input id="fav" type="checkbox" name="fav" value="1"{{if .Query.Favorites}} checked{{end}}> ★ Favorites</label>
     <label class="check"><input id="buried" type="checkbox" name="buried" value="1"{{if .Buried}} checked{{end}}> Buried</label>
   </div>
@@ -23,13 +17,6 @@
 {{template "foot" .}}
 
 {{define "results"}}
-  {{with .Tag}}
-  <header class="tag-filter">
-    <p class="tag-kind">Tag · <a href="/tags">All tags</a></p>
-    <h1>{{.Name}}</h1>
-    <p class="tag-count">{{.Count}} {{plural .Count "highlight" "highlights"}} from {{.Books}} {{plural .Books "book" "books"}}.{{if .Suggested}} {{.Suggested}} {{plural .Suggested "is suggested and looks" "are suggested and look"}} muted; <kbd>T</kbd> confirms, <kbd>t</kbd> edits.{{end}}</p>
-  </header>
-  {{end}}
   {{if .Results}}
   <p class="count">{{if .Semantic}}{{if .Words}}{{.Words}} with your words{{else}}No exact word matches{{end}}{{if .Meaning}} · {{.Meaning}} {{if .Words}}more {{end}}similar in meaning{{end}}{{else if .Query.Text}}{{.Total}} {{plural .Total "result" "results"}}{{else}}{{.Total}} {{plural .Total "highlight" "highlights"}}{{end}}</p>
   {{with .Fallback}}<p class="fallback">Keyword matches only: {{.}}.</p>{{end}}
@@ -37,7 +24,7 @@
     {{template "results-page" .}}
   </div>
   {{else}}
-  <p class="empty">{{if or .Query.Text .Query.BookID .Query.TagID}}No highlights match.{{else if .Buried}}Nothing is buried.{{else if .Query.Favorites}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights yet. Import them with <code>cmpl import</code>.{{end}}</p>
+  <p class="empty">{{if or .Query.Text .Query.BookID}}No highlights match.{{else if .Buried}}Nothing is buried.{{else if .Query.Favorites}}No favorites yet. Press <kbd>f</kbd> on a quote to favorite it.{{else}}No highlights yet. Import them with <code>cmpl import</code>.{{end}}</p>
   {{with .Fallback}}<p class="fallback">Keyword matches only: {{.}}.</p>{{end}}
   {{end}}
 {{end}}

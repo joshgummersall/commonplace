@@ -308,16 +308,11 @@ func TestStoreFailureIsNotAFormError(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT, 'disk on fire'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.store.DB().Exec(`CREATE TRIGGER fail_tags BEFORE INSERT ON tags
-		BEGIN SELECT RAISE(ABORT, 'disk on fire'); END`); err != nil {
-		t.Fatal(err)
-	}
 	for _, req := range []struct {
 		method, path string
 		form         url.Values
 	}{
 		{"POST", page + "/notes", url.Values{"body": {"A thought."}}},
-		{"PUT", page + "/tags", url.Values{"tags": {"Stoicism"}}},
 	} {
 		status, body := h.do(req.method, req.path, req.form, true)
 		if status != http.StatusInternalServerError {
@@ -330,11 +325,12 @@ func TestStoreFailureIsNotAFormError(t *testing.T) {
 // Tags were removed; their routes must be gone too.
 func TestNoTagRoutes(t *testing.T) {
 	h := newHarness(t, clip("Meditations", "Marcus Aurelius", 10, "The impediment to action."))
-	path := fmt.Sprintf("/h/%d/tags", h.firstID())
-	if status, _ := h.do("POST", path, url.Values{"tag": {"x"}}, true); status != http.StatusMethodNotAllowed && status != http.StatusNotFound {
-		t.Errorf("POST %s = %d, want 404 or 405", path, status)
+	for _, path := range []string{"/tags", fmt.Sprintf("/h/%d/tags", h.firstID())} {
+		if status, _ := h.do("GET", path, nil, true); status != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, status)
+		}
 	}
-	mustNotContain(t, h.get("/search"), `name="tag"`)
+	mustNotContain(t, h.get("/search"), `name="tag"`, `href="/tags"`)
 }
 
 // The server listens on localhost; a page on another site must not be able
@@ -661,7 +657,7 @@ func TestSearchCountLine(t *testing.T) {
 func TestQueryRoundTrip(t *testing.T) {
 	for _, q := range []search.Query{
 		{Buried: search.BuriedHidden},
-		{Text: `luck "and skill"`, BookID: 3, TagID: 7, Favorites: true, Buried: search.BuriedOnly, Offset: 100},
+		{Text: `luck "and skill"`, BookID: 3, Favorites: true, Buried: search.BuriedOnly, Offset: 100},
 	} {
 		req := httptest.NewRequest("GET", "/search?"+queryValues(q).Encode(), nil)
 		req.Header.Set("HX-Request", "true")
@@ -675,7 +671,7 @@ func TestQueryRoundTrip(t *testing.T) {
 			t.Errorf("full page = %+v, %v; want %+v", got, err, want)
 		}
 	}
-	for _, raw := range []string{"book=x", "tag=x", "offset=-1"} {
+	for _, raw := range []string{"book=x", "offset=-1"} {
 		req := httptest.NewRequest("GET", "/search?"+raw, nil)
 		req.Header.Set("HX-Request", "true")
 		if _, err := parseQuery(req); err == nil {

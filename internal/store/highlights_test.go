@@ -7,7 +7,7 @@ import (
 
 func TestToggleFavorite(t *testing.T) {
 	s := openTemp(t)
-	id := addHighlights(t, s, 1, "A")[0]
+	id := seedHighlight(t, s)
 	for _, want := range []bool{true, false} {
 		got, err := s.ToggleFavorite(id)
 		if err != nil {

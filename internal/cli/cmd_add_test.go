@@ -29,20 +29,12 @@ func runAdd(t *testing.T, db, stdin string, args ...string) addResultJSON {
 	return r
 }
 
-func tagNames(h highlightJSON) []string {
-	var names []string
-	for _, t := range h.Tags {
-		names = append(names, t.Name)
-	}
-	return names
-}
-
 func TestAddCommand(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "c.db")
 
 	r := runAdd(t, db, "", "We are what we repeatedly do.",
 		"--title", "The Story of Philosophy", "--author", "Will Durant",
-		"--page", "87", "--tag", "habit,virtue", "--note", "Aristotle, via Durant")
+		"--page", "87", "--note", "Aristotle, via Durant")
 	h := r.Highlight
 	if r.Status != "added" || h.ID == 0 {
 		t.Fatalf("status %q, id %d; want added", r.Status, h.ID)
@@ -54,23 +46,16 @@ func TestAddCommand(t *testing.T) {
 	if h.HighlightedAt == nil || !h.HighlightedAt.Equal(time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)) {
 		t.Errorf("highlighted_at %v, want now", h.HighlightedAt)
 	}
-	if got := strings.Join(tagNames(h), ","); got != "habit,virtue" {
-		t.Errorf("tags %q", got)
-	}
 	if len(h.Notes) != 1 || h.Notes[0].Body != "Aristotle, via Durant" || h.Notes[0].Source != "user" {
 		t.Errorf("notes %+v", h.Notes)
 	}
 
-	// The same text from stdin, differently spaced, is the same highlight: the note isn't repeated, and
-	// tags are added to the ones it has.
+	// The same text from stdin, differently spaced, is the same highlight: the note isn't repeated.
 	r = runAdd(t, db, "  We are what we\nrepeatedly   do.\n", "-",
 		"--title", "The Story of Philosophy", "--author", "Will Durant",
-		"--page", "87", "--tag", "excellence", "--note", "Aristotle, via Durant")
+		"--page", "87", "--note", "Aristotle, via Durant")
 	if r.Status != "exists" || r.Highlight.ID != h.ID {
 		t.Fatalf("status %q, id %d; want exists, %d", r.Status, r.Highlight.ID, h.ID)
-	}
-	if got := strings.Join(tagNames(r.Highlight), ","); got != "excellence,habit,virtue" {
-		t.Errorf("tags %q", got)
 	}
 	if len(r.Highlight.Notes) != 1 {
 		t.Errorf("notes %+v, want the one note", r.Highlight.Notes)

@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/joshgummersall/commonplace/internal/autotag"
 	"github.com/joshgummersall/commonplace/internal/clippings"
 	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/importer"
@@ -98,8 +97,7 @@ func (a *App) printImportResult(r importer.Result, warnings int) {
 	}
 }
 
-// embedAfterImport embeds whatever is missing, then suggests tags for the
-// new highlights, reporting counts to out. Failing to embed never fails the
+// embedAfterImport embeds whatever is missing, reporting the count to out. Failing to embed never fails the
 // import: the highlights are stored, and serve retries.
 func (a *App) embedAfterImport(ctx context.Context, s *store.Store, out io.Writer) {
 	e := a.embedder()
@@ -110,11 +108,6 @@ func (a *App) embedAfterImport(ctx context.Context, s *store.Store, out io.Write
 	if n > 0 {
 		fmt.Fprintln(a.stderr)
 		fmt.Fprintf(out, "%d highlights embedded with %s\n", n, e.Model())
-		if added, err := autotag.Suggest(s, e.Model()); err != nil {
-			fmt.Fprintf(a.stderr, "warning: suggesting tags failed: %v\n", err)
-		} else if added > 0 {
-			fmt.Fprintf(out, "%d tags suggested\n", added)
-		}
 	}
 	if err != nil {
 		left, _ := s.CountStaleEmbeddings(e.Model())

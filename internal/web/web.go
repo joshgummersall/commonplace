@@ -15,12 +15,10 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/joshgummersall/commonplace/internal/autotag"
 	"github.com/joshgummersall/commonplace/internal/embedding"
 	"github.com/joshgummersall/commonplace/internal/search"
 	"github.com/joshgummersall/commonplace/internal/store"
@@ -33,13 +31,10 @@ var embedded embed.FS
 type Server struct {
 	store    *store.Store
 	searcher *search.Searcher
-	// seeder suggests a first set of tags; nil without an embedder and a
-	// namer.
-	seeder *autotag.Seeder
-	logger *slog.Logger
-	now    func() time.Time
-	files  fs.FS
-	dev    bool
+	logger   *slog.Logger
+	now      func() time.Time
+	files    fs.FS
+	dev      bool
 	// hostName is Options.HostName, normalized like a Host header.
 	hostName string
 
@@ -56,9 +51,6 @@ type Options struct {
 	// Embedder enables semantic search and similar highlights. Without
 	// it, search is keyword only.
 	Embedder embedding.Embedder
-	// Namer names suggested tags. With Embedder, it enables suggesting a
-	// first set of tags.
-	Namer autotag.Namer
 	// HostName is a host name the app answers to besides localhost and
 	// IP addresses: the name cmpl serve --host listens on.
 	HostName string
@@ -76,9 +68,6 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	}
 	if srv.now == nil {
 		srv.now = time.Now
-	}
-	if opts.Embedder != nil && opts.Namer != nil {
-		srv.seeder = autotag.NewSeeder(s, opts.Embedder.Model(), opts.Namer, srv.now, srv.logger)
 	}
 	if opts.DevDir != "" {
 		srv.files = os.DirFS(opts.DevDir)
@@ -126,20 +115,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /notes/{id}", s.handle(s.updateNote))
 	mux.HandleFunc("DELETE /notes/{id}", s.handle(s.deleteNote))
 	mux.HandleFunc("POST /notes/{id}/restore", s.handle(s.restoreNote))
-	mux.HandleFunc("GET /h/{id}/tags", s.handle(s.highlightTags))
-	mux.HandleFunc("GET /h/{id}/tags/edit", s.handle(s.editTags))
-	mux.HandleFunc("PUT /h/{id}/tags", s.handle(s.saveTags))
-	mux.HandleFunc("POST /h/{id}/tags/confirm", s.handle(s.confirmTags))
-	mux.HandleFunc("GET /tags", s.handle(s.tagList))
-	mux.HandleFunc("GET /tags/seed", s.handle(s.seedStatus))
-	mux.HandleFunc("POST /tags/seed", s.handle(s.startSeed))
-	mux.HandleFunc("GET /tags/{id}", s.handle(s.tagRow))
-	mux.HandleFunc("GET /tags/{id}/rename", s.handle(s.renameForm))
-	mux.HandleFunc("PUT /tags/{id}", s.handle(s.renameTag))
-	mux.HandleFunc("GET /tags/{id}/merge", s.handle(s.mergeForm))
-	mux.HandleFunc("POST /tags/{id}/merge", s.handle(s.mergeTag))
-	mux.HandleFunc("GET /tags/{id}/delete", s.handle(s.deleteForm))
-	mux.HandleFunc("DELETE /tags/{id}", s.handle(s.deleteTag))
 
 	return s.checkHost(http.NewCrossOriginProtection().Handler(mux))
 }
@@ -288,44 +263,10 @@ var funcs = template.FuncMap{
 			return source
 		}
 	},
-	"ago": func(now, t time.Time) string {
-		d := now.Sub(t)
-		switch {
-		case d < time.Minute:
-			return "just now"
-		case d < time.Hour:
-			return humanCount(int(d.Minutes()), "minute") + " ago"
-		case d < 24*time.Hour:
-			return humanCount(int(d.Hours()), "hour") + " ago"
-		}
-		return "on " + t.Local().Format("Jan 2")
-	},
-	"percent": func(done, total int) int {
-		if total == 0 {
-			return 0
-		}
-		return 100 * done / total
-	},
-	// suggested reports whether any of a quote's tags awaits confirming.
-	"suggested": func(tags []store.TagRef) bool {
-		for _, t := range tags {
-			if t.Suggested {
-				return true
-			}
-		}
-		return false
-	},
 	"plural": func(n int, one, many string) string {
 		if n == 1 {
 			return one
 		}
 		return many
 	},
-}
-
-func humanCount(n int, unit string) string {
-	if n == 1 {
-		return "1 " + unit
-	}
-	return strconv.Itoa(n) + " " + unit + "s"
 }
