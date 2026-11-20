@@ -5,13 +5,13 @@ argument-hint: [topic]
 disable-model-invocation: true
 ---
 
-The user names a topic. With no topic, pick a random tag that spans three or more books, and say which one you picked:
+The user names a topic. With no topic, pick a random favorite highlight (with no favorites, a random highlight from `cmpl daily`):
 
 ```sh
-cmpl tags | jq -r '.tags[] | select(.books >= 3) | "\(.id)\t\(.name)"' | awk 'BEGIN { srand() } { a[NR] = $0 } END { print a[int(rand() * NR) + 1] }'
+cmpl list --favorites --limit 1000 | jq -r '.results[] | "\(.id)\t\(.text)"' | awk 'BEGIN { srand() } { a[NR] = $0 } END { if (NR) print a[int(rand() * NR) + 1] }'
 ```
 
-Use its name as the topic and its id in step 1.
+Name the idea it states in a few words, use that as the topic, and tell the user which highlight (by id) and topic you picked.
 
 Help the user reach a position that is **precise**, **coherent**, and held with honest **credence**. Reason like a Bayesian: every claim is a hypothesis, every highlight is evidence that moves it by some amount, and the user decides. Treat the library as one source among several: bring in the strongest relevant ideas from outside it too, labeled as outside the library.
 
@@ -19,9 +19,8 @@ Run every library read through `cmpl` (read-only; `cmpl help <command>` has flag
 
 ## 1. Gather
 
-1. Run `cmpl tags` and note every tag that bears on the topic, including neighboring ones.
-2. Run `cmpl search '<phrasing>' --notes --limit 20` for the topic in four or more phrasings: the plain topic, the underlying question, its opposite or failure mode, and an adjacent field's framing of it. Run `cmpl list --tag <id> --notes` for each matching tag.
-3. For the strongest hits (favorites, highlights with user notes, highlights that state a claim), run `cmpl similar <id> --notes`.
+1. Run `cmpl search '<phrasing>' --notes --limit 20` for the topic in four or more phrasings: the plain topic, the underlying question, its opposite or failure mode, and an adjacent field's framing of it.
+2. For the strongest hits (favorites, highlights with user notes, highlights that state a claim), run `cmpl similar <id> --notes`.
 
 Done when a new phrasing or `similar` call returns mostly ids you already have, and you hold evidence on both sides of the topic or know that one side is missing from the library.
 

@@ -336,3 +336,44 @@ func TestMigrateNotesFromV2(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Migration 0009 drops tags and leaves the tagged highlights alone.
+func TestMigrateDropsTags(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v8.db")
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := &Store{db: db}
+	if err := old.migrateTo(8); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO books (id, title, author) VALUES (1, 'Meditations', 'Marcus Aurelius')`,
+		`INSERT INTO highlights (id, book_id, source, text, imported_at, hash)
+			VALUES (1, 1, 'kindle', 'The impediment to action.', '2026-01-01T00:00:00Z', 'h1')`,
+		`INSERT INTO tags (id, name) VALUES (1, 'Stoicism')`,
+		`INSERT INTO highlight_tags (highlight_id, tag_id, state) VALUES (1, 1, 'yes')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	db.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var n int
+	if err := s.DB().QueryRow(`SELECT count(*) FROM sqlite_schema WHERE name IN ('tags', 'highlight_tags', 'highlight_tags_tag')`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("%d tag tables or indexes remain", n)
+	}
+	if _, err := s.Entry(1); err != nil {
+		t.Errorf("tagged highlight: %v", err)
+	}
+}

@@ -462,23 +462,15 @@ func TestRunBuried(t *testing.T) {
 func TestFilters(t *testing.T) {
 	sr, ids := newSearcher(t, conceptEmbedder{}, library)
 	ctx := context.Background()
-	luck := ids["Luck plays a part, but process makes a team."]
 	fortune := ids["Fortune favors the prepared, but chance decides the rest."]
 	random := ids["Most success is random noise mistaken for skill."]
-	if err := sr.Store.SetTags(luck, []string{"Chance"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := sr.Store.SetTags(fortune, []string{"Chance"}); err != nil {
-		t.Fatal(err)
-	}
 	if err := sr.Store.SetFavorite(fortune, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := sr.Store.SetBuried(random, true); err != nil {
 		t.Fatal(err)
 	}
-	var chance, fooled int64
-	sr.Store.DB().QueryRow(`SELECT id FROM tags WHERE name = 'Chance'`).Scan(&chance)
+	var fooled int64
 	sr.Store.DB().QueryRow(`SELECT book_id FROM highlights WHERE id = ?`, fortune).Scan(&fooled)
 
 	if got, err := filterIDs(sr.Store, Query{Text: "luck"}); err != nil || got != nil {
@@ -489,12 +481,11 @@ func TestFilters(t *testing.T) {
 		q    Query
 		want []int64
 	}{
-		{"tag", Query{TagID: chance}, []int64{luck, fortune}},
 		{"favorites", Query{Favorites: true}, []int64{fortune}},
 		{"book", Query{BookID: fooled}, []int64{fortune, random}},
 		{"book, not buried", Query{BookID: fooled, Buried: BuriedHidden}, []int64{fortune}},
 		{"buried only", Query{Buried: BuriedOnly}, []int64{random}},
-		{"tag and favorites", Query{Text: "ignored", TagID: chance, Favorites: true}, []int64{fortune}},
+		{"book and favorites", Query{Text: "ignored", BookID: fooled, Favorites: true}, []int64{fortune}},
 	} {
 		got, err := filterIDs(sr.Store, tt.q)
 		if err != nil {

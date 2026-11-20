@@ -23,7 +23,6 @@ type addResultJSON struct {
 func (a *App) newAddCommand() *cobra.Command {
 	var (
 		title, author, page, date, note string
-		tags                            []string
 	)
 	cmd := &cobra.Command{
 		Use:   "add [text]",
@@ -38,17 +37,15 @@ work it comes from and is required; --author is optional, as on import.
 
 Adding is safe to repeat. Text already stored for the same title and
 author (ignoring case, spacing, and curly quotes) is not added again:
---note and --tag still apply to the stored highlight, and the same note
+--note still applies to the stored highlight, and the same note
 is never added twice. A longer or shorter version of a stored hand-added
 highlight from the same title, author, and page replaces it, keeping its
-notes, tags, and favorite.
+notes and favorite.
 
 --note adds a note to the highlight, as one written in the web app.
---tag adds a tag (repeat it, or separate names with commas), creating
-the tag if new and keeping the highlight's other tags.
 
-The new highlight is then embedded for search by meaning and suggested
-tags, as after import; if Ollama isn't running, the highlight is still
+The new highlight is then embedded for search by meaning, as after
+import; if Ollama isn't running, the highlight is still
 stored and cmpl serve embeds it later. Those messages go to stderr.
 
 Output: a JSON object on stdout,
@@ -57,10 +54,10 @@ Output: a JSON object on stdout,
 
 where status is "added", "updated" (an older version was replaced), or
 "exists" (already stored), and highlight is the stored highlight as cmpl
-show prints it, with notes and tags.
+show prints it, with notes.
 ` + jsonHelp,
 		Example: `  cmpl add "We are what we repeatedly do." --title "The Story of Philosophy" --author "Will Durant"
-  cmpl add "..." --title Meditations --author "Marcus Aurelius" --page 41 --tag stoicism --note "Reread before reviews"
+  cmpl add "..." --title Meditations --author "Marcus Aurelius" --page 41 --note "Reread before reviews"
   pbpaste | cmpl add --title "Working in Public" --author "Nadia Eghbal"
   cmpl add - --title "Essay title" <<'EOF'
   A passage with "quotes" and
@@ -82,18 +79,6 @@ show prints it, with notes and tags.
 					return err
 				}
 			}
-			var names []string
-			for _, t := range tags {
-				for n := range strings.SplitSeq(t, ",") {
-					if n = strings.TrimSpace(n); n != "" {
-						if _, err := store.CleanTagName(n); err != nil {
-							return fmt.Errorf("--tag %q: %w", n, err)
-						}
-						names = append(names, n)
-					}
-				}
-			}
-
 			c := clippings.Clipping{
 				Kind:    clippings.Highlight,
 				Dialect: clippings.Dialect(store.UserSource),
@@ -124,11 +109,6 @@ show prints it, with notes and tags.
 					return err
 				}
 			}
-			if len(names) > 0 {
-				if err := s.AddTags(id, names); err != nil {
-					return err
-				}
-			}
 			if status != "exists" {
 				a.embedAfterImport(cmd.Context(), s, a.stderr)
 			}
@@ -149,7 +129,6 @@ show prints it, with notes and tags.
 	cmd.Flags().StringVarP(&page, "page", "p", "", "page number, as written (\"138\", \"xvi\")")
 	cmd.Flags().StringVar(&date, "date", "", "when it was highlighted, as 2026-11-19 or RFC 3339 (default now)")
 	cmd.Flags().StringVarP(&note, "note", "n", "", "add a note to the highlight")
-	cmd.Flags().StringSliceVar(&tags, "tag", nil, "add a tag; repeat or comma-separate for more")
 	return cmd
 }
 

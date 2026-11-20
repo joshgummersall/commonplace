@@ -228,13 +228,6 @@ func scanEntries(rows *sql.Rows) (map[int64]Entry, error) {
 	return out, rows.Err()
 }
 
-// CountHighlights counts every highlight.
-func (s *Store) CountHighlights() (int, error) {
-	var n int
-	err := s.db.QueryRow(`SELECT count(*) FROM highlights`).Scan(&n)
-	return n, err
-}
-
 // SetFavorite marks or unmarks a highlight as a favorite.
 func (s *Store) SetFavorite(id int64, favorite bool) error {
 	return s.execOne(`UPDATE highlights SET favorite = ? WHERE id = ?`, favorite, id)

@@ -95,41 +95,13 @@ func (s *Store) Vectors(model string) ([]Vector, error) {
 	return out, rows.Err()
 }
 
-// EmbeddedText is an embedded highlight, as grouping needs it.
-type EmbeddedText struct {
-	ID     int64
-	BookID int64
-	Text   string
-	Vec    []float32
-}
-
-// EmbeddedTexts loads every highlight embedded by model, with its text.
-func (s *Store) EmbeddedTexts(model string) ([]EmbeddedText, error) {
-	rows, err := s.db.Query(`SELECT h.id, h.book_id, e.vector, h.text `+embeddedBy, model)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []EmbeddedText
-	for rows.Next() {
-		var text string
-		v, err := scanVector(rows, &text)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, EmbeddedText{ID: v.HighlightID, BookID: v.BookID, Text: text, Vec: v.Vec})
-	}
-	return out, rows.Err()
-}
-
-// scanVector scans a highlight id, book id, and vector, then any extra
-// destinations.
-func scanVector(rows *sql.Rows, extra ...any) (Vector, error) {
+// scanVector scans a highlight id, book id, and vector.
+func scanVector(rows *sql.Rows) (Vector, error) {
 	var (
 		v    Vector
 		blob []byte
 	)
-	if err := rows.Scan(append([]any{&v.HighlightID, &v.BookID, &blob}, extra...)...); err != nil {
+	if err := rows.Scan(&v.HighlightID, &v.BookID, &blob); err != nil {
 		return Vector{}, err
 	}
 	vec, err := DecodeVector(blob)

@@ -58,7 +58,6 @@ The JSON output is an array of highlights.`,
 // pageFlags are the filters and paging that list and search share.
 type pageFlags struct {
 	book      string
-	tag       string
 	favorites bool
 	limit     int
 	offset    int
@@ -67,7 +66,6 @@ type pageFlags struct {
 
 func (f *pageFlags) add(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.book, "book", "", "only this book: its id, or part of its title (see cmpl books)")
-	cmd.Flags().StringVar(&f.tag, "tag", "", "only this tag, suggested or confirmed: its id, or part of its name (see cmpl tags)")
 	cmd.Flags().BoolVar(&f.favorites, "favorites", false, "only favorites")
 	cmd.Flags().IntVar(&f.limit, "limit", defaultLimit, "highlights per page")
 	cmd.Flags().IntVar(&f.offset, "offset", 0, "highlights to skip, to fetch later pages")
@@ -86,8 +84,8 @@ func (a *App) newListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List highlights, newest first",
-		Long: `List highlights, newest first, optionally only one book's, one tag's,
-or only favorites. Buried highlights are included and marked.
+		Long: `List highlights, newest first, optionally only one book's or only
+favorites. Buried highlights are included and marked.
 
 Use list to browse, for example all of one book's highlights; use search
 to find highlights about something.
@@ -96,8 +94,7 @@ to find highlights about something.
 		Example: `  cmpl list
   cmpl list --favorites --notes --limit 50
   cmpl list --book meditations
-  cmpl list --book 7 --offset 20
-  cmpl list --tag 31`,
+  cmpl list --book 7 --offset 20`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runPage(cmd, "", f)
@@ -160,11 +157,6 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 			return err
 		}
 	}
-	if f.tag != "" {
-		if q.TagID, err = resolveTag(s, f.tag); err != nil {
-			return err
-		}
-	}
 	p, err := search.New(s, a.embedder()).Run(cmd.Context(), q, search.ModeHybrid)
 	if err != nil {
 		return err
@@ -191,22 +183,6 @@ func (a *App) runPage(cmd *cobra.Command, text string, f pageFlags) error {
 	return writeJSON(a.stdout, out)
 }
 
-// resolveTag turns --tag into a tag id (see resolve).
-func resolveTag(s *store.Store, arg string) (int64, error) {
-	tags, err := s.Tags()
-	if err != nil {
-		return 0, err
-	}
-	if len(tags) == 0 {
-		return 0, fmt.Errorf("there are no tags yet; add them in the web app")
-	}
-	all := make([]named, len(tags))
-	for i, t := range tags {
-		all[i] = named{t.ID, t.Name}
-	}
-	return resolve(arg, "tag", "name", all)
-}
-
 // resolveBook turns --book into a book id (see resolve).
 func resolveBook(s *store.Store, arg string) (int64, error) {
 	books, err := s.Books(true)
@@ -220,16 +196,16 @@ func resolveBook(s *store.Store, arg string) (int64, error) {
 	return resolve(arg, "book", "title", all)
 }
 
-// named is a book or tag as --book and --tag match it.
+// named is a book as --book matches it.
 type named struct {
 	id   int64
 	name string
 }
 
-// resolve turns a --book or --tag value into an id: a number is an id;
-// anything else must match exactly one name, ignoring case, either whole
-// or as a part. noun is "book" or "tag", and field what its name is
-// called in messages.
+// resolve turns a --book value into an id: a number is an id; anything
+// else must match exactly one name, ignoring case, either whole or as a
+// part. noun is what is named ("book"), and field what its name is called
+// in messages.
 func resolve(arg, noun, field string, all []named) (int64, error) {
 	list := "cmpl " + noun + "s"
 	if id, err := strconv.ParseInt(arg, 10, 64); err == nil {
@@ -421,59 +397,6 @@ The JSON output is an array:
 			out := make([]bookJSON, len(books))
 			for i, b := range books {
 				out[i] = bookJSON{b.ID, b.Title, b.Author, b.Count}
-			}
-			return writeJSON(a.stdout, out)
-		},
-	}
-	return cmd
-}
-
-func (a *App) newTagsCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "tags",
-		Short: "List tags",
-		Long: `List tags, the web app's Tags page, by name. Tags are set in the web
-app. The app also suggests tags for a highlight from what its nearest
-neighbors carry; a suggestion counts toward a tag but stays marked until
-it is confirmed. Not every highlight has a tag.
-
-Pass an id (or part of a name) to --tag on list and search.
-
-The JSON output is an object:
-
-  {"untagged": 412,
-   "tags": [{"id": 3, "name": "...", "highlights": 129, "suggested": 40, "books": 37}]}
-
-highlights counts suggested and confirmed tags alike; suggested counts the
-suggestions among them. untagged counts highlights with no tag.`,
-		Example: `  cmpl tags
-  cmpl list --tag 31`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := a.openStore()
-			if err != nil {
-				return err
-			}
-			tags, err := s.Tags()
-			if err != nil {
-				return err
-			}
-			type tagJSON struct {
-				ID         int64  `json:"id"`
-				Name       string `json:"name"`
-				Highlights int    `json:"highlights"`
-				Suggested  int    `json:"suggested"`
-				Books      int    `json:"books"`
-			}
-			out := struct {
-				Untagged int       `json:"untagged"`
-				Tags     []tagJSON `json:"tags"`
-			}{Tags: []tagJSON{}}
-			if out.Untagged, err = s.UntaggedCount(); err != nil {
-				return err
-			}
-			for _, t := range tags {
-				out.Tags = append(out.Tags, tagJSON{t.ID, t.Name, t.Count, t.Suggested, t.Books})
 			}
 			return writeJSON(a.stdout, out)
 		},

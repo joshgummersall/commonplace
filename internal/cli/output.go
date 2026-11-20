@@ -15,17 +15,16 @@ import (
 
 // highlightJSON is a highlight in JSON output.
 type highlightJSON struct {
-	ID            int64        `json:"id"`
-	Text          string       `json:"text"`
-	BookID        int64        `json:"book_id"`
-	Title         string       `json:"title"`
-	Author        string       `json:"author"`
-	Location      string       `json:"location"`
-	HighlightedAt *time.Time   `json:"highlighted_at"`
-	Favorite      bool         `json:"favorite"`
-	Buried        bool         `json:"buried"`
-	NoteCount     int          `json:"note_count"`
-	Tags          []tagRefJSON `json:"tags,omitempty"`
+	ID            int64      `json:"id"`
+	Text          string     `json:"text"`
+	BookID        int64      `json:"book_id"`
+	Title         string     `json:"title"`
+	Author        string     `json:"author"`
+	Location      string     `json:"location"`
+	HighlightedAt *time.Time `json:"highlighted_at"`
+	Favorite      bool       `json:"favorite"`
+	Buried        bool       `json:"buried"`
+	NoteCount     int        `json:"note_count"`
 	// Notes is set by show, and by the other read commands with --notes.
 	Notes []noteJSON `json:"notes,omitempty"`
 	// Why is set by search: where the query matched.
@@ -35,12 +34,6 @@ type highlightJSON struct {
 	NoteMatch string `json:"note_match,omitempty"`
 	// Score is set by similar: cosine similarity, higher is closer.
 	Score *float32 `json:"score,omitempty"`
-}
-
-type tagRefJSON struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Suggested bool   `json:"suggested,omitempty"`
 }
 
 type noteJSON struct {
@@ -68,9 +61,7 @@ A highlight is an object:
    "location": "page 138, loc 2452-2456", "highlighted_at": "2022-03-07T01:58:16Z",
    "favorite": false, "buried": false, "note_count": 1}
 
-highlighted_at is null when the device didn't record a time. A tagged
-highlight adds "tags": [{"id": 31, "name": "..."}], by name; a tag the
-app suggested and nobody confirmed has "suggested": true (see cmpl tags).
+highlighted_at is null when the device didn't record a time.
 
 With --notes (always, for show), each highlight that has notes adds them:
 
@@ -99,7 +90,7 @@ func writeJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
-// toJSON converts entries, filling note counts and tags, and with
+// toJSON converts entries, filling note counts, and with
 // withNotes each highlight's notes.
 func toJSON(s *store.Store, entries []store.Entry, withNotes bool) ([]highlightJSON, error) {
 	items, err := s.Items(entries, withNotes)
@@ -118,9 +109,6 @@ func toJSON(s *store.Store, entries []store.Entry, withNotes bool) ([]highlightJ
 			Favorite:  it.Favorite,
 			Buried:    it.Buried,
 			NoteCount: it.NoteCount,
-		}
-		for _, t := range it.Tags {
-			h.Tags = append(h.Tags, tagRefJSON{t.ID, t.Name, t.Suggested})
 		}
 		if !it.HighlightedAt.IsZero() {
 			t := it.HighlightedAt.UTC()

@@ -27,11 +27,10 @@ mise run install   # builds bin/cmpl and copies it to ~/.local/bin
 ## Requirements
 
 - [Ollama](https://ollama.com/) with the embedding model, for search by meaning
-  and similar highlights, and a chat model to name suggested tags:
+  and similar highlights:
 
   ```
   ollama pull qwen3-embedding:0.6b
-  ollama pull qwen2.5:14b
   ```
 
   Ollama is optional. Without it, everything works and search falls back to
@@ -61,13 +60,7 @@ cmpl serve          # http://127.0.0.1:8420
   seen for longest come up first; favorites come up more often; no two make
   nearly the same point.
 - **Search** matches your words and your meaning together and says why each
-  result is listed. Filter by book, tag, or favorites.
-- **Tags** are yours to set, rename, merge, and delete. The app suggests them
-  too: a library with no tags can have its highlights grouped by meaning and
-  each group named by the local model, and after that each new highlight is
-  suggested the tags most of its nearest neighbors carry. Suggestions look
-  muted until you confirm them; a tag you remove is never suggested again
-  for that quote.
+  result is listed. Filter by book or favorites.
 - **A quote's page** holds its notes (from the device and your own, editable)
   and a *More like this* panel of related highlights, other books first.
 - **Bury** hides a quote from Daily and Search, after asking. The Buried
@@ -86,15 +79,14 @@ documents its flags and output.
 
 ```
 cmpl daily                         # today's daily highlights
-cmpl list --favorites              # newest first; --book, --tag, --limit, --offset
+cmpl list --favorites              # newest first; --book, --limit, --offset
 cmpl search 'fear of failure'      # words and meaning, as in the web app
 cmpl show 412                      # one highlight in full, with notes
 cmpl similar 412                   # highlights close in meaning
 cmpl books                         # book ids for --book
-cmpl tags                          # tag ids for --tag
 ```
 
-These commands don't change highlights, notes, tags, favorites, or burials, and
+These commands don't change highlights, notes, favorites, or burials, and
 `cmpl daily` doesn't count as reading the day's set.
 
 To save a quote that didn't come from an e-reader, from a paper book, an
@@ -102,7 +94,7 @@ article, or a conversation, use `cmpl add`:
 
 ```
 cmpl add 'We are what we repeatedly do.' --title 'The Story of Philosophy' --author 'Will Durant'
-pbpaste | cmpl add --title Meditations --author 'Marcus Aurelius' --page 41 --tag stoicism --note 'Reread before reviews'
+pbpaste | cmpl add --title Meditations --author 'Marcus Aurelius' --page 41 --note 'Reread before reviews'
 ```
 
 It prints the stored highlight as JSON, with `"status"` of `added`, `updated`,
@@ -127,7 +119,7 @@ your `PATH`. The random topic pick also needs `jq`.
   or inconsistent answers, until you hold a position specific enough to be
   wrong. It recommends reading aimed at the weak points and writes a
   position note where your instructions say you keep notes. With no topic,
-  it picks a random tag.
+  it picks one from a random favorite.
 
 ### Keys
 
@@ -138,11 +130,9 @@ app for the full list.
 | --- | --- |
 | `j` `k` (with counts, `5j`), `gg` `G`, `Ctrl-d` `Ctrl-u` | Move between quotes or notes |
 | `o` `Enter` / `h` `Ctrl-o` | Open quote / back |
-| `/` `gs`, `gd`, `gt`, `gf` | Search, go to Daily, go to Tags, toggle the Favorites filter |
-| `t`, `T` | Edit the quote's tags (matches are listed as you type; `Tab` picks one), confirm its suggested tags |
+| `/` `gs`, `gd`, `gf` | Search, go to Daily, toggle the Favorites filter |
 | `f`, `b`, `s` | Favorite, bury, more like this |
-| `i`, `cc`, `dd` | Write, edit, delete a note (on the Tags page: rename, delete a tag) |
-| `m` | On the Tags page, merge a tag into another |
+| `i`, `cc`, `dd` | Write, edit, delete a note |
 | `yy`, `u` | Copy quote with source, undo |
 
 ## Configuration
@@ -152,7 +142,6 @@ app for the full list.
 | Database | `--db` | `COMMONPLACE_DB` | `$XDG_DATA_HOME/commonplace/commonplace.db`, else `~/.local/share/commonplace/commonplace.db` |
 | Ollama address | `--ollama-url` | `OLLAMA_HOST` | `http://localhost:11434` |
 | Embedding model | `--embed-model` | | `qwen3-embedding:0.6b` |
-| Tag-naming model | `--name-model` (serve) | | `qwen2.5:14b` |
 
 Changing the embedding model re-embeds every highlight in the background the
 next time `cmpl serve` runs.

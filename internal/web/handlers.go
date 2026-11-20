@@ -96,12 +96,8 @@ func (s *Server) daily(w http.ResponseWriter, r *http.Request) error {
 
 type searchPage struct {
 	page
-	Query search.Query
-	Books []store.BookCount
-	// Tag describes the tag filter, when one is set.
-	Tag *store.Tag
-	// Tags fills the tag menu.
-	Tags    []store.Tag
+	Query   search.Query
+	Books   []store.BookCount
 	Results []card
 	// Total counts every match. When meaning-based matching ran, Words
 	// and Meaning split it into word matches and meaning-only matches.
@@ -132,13 +128,6 @@ func parseQuery(r *http.Request) (search.Query, error) {
 		}
 		q.BookID = id
 	}
-	if t := r.FormValue("tag"); t != "" {
-		id, err := strconv.ParseInt(t, 10, 64)
-		if err != nil {
-			return q, badRequest("bad tag id %q", t)
-		}
-		q.TagID = id
-	}
 	// Later pages are only fetched by the Load more button; a full page
 	// load always starts from the top.
 	if o := r.FormValue("offset"); o != "" && isHTMX(r) {
@@ -160,9 +149,6 @@ func queryValues(q search.Query) url.Values {
 	}
 	if q.BookID != 0 {
 		v.Set("book", strconv.FormatInt(q.BookID, 10))
-	}
-	if q.TagID != 0 {
-		v.Set("tag", strconv.FormatInt(q.TagID, 10))
 	}
 	if q.Favorites {
 		v.Set("fav", "1")
@@ -189,14 +175,6 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 	if err := s.searchResults(r, &data); err != nil {
 		return err
 	}
-	// The tag header sits above the results, so it changes with them.
-	if q.TagID != 0 && q.Offset == 0 {
-		t, err := s.store.Tag(q.TagID)
-		if err != nil {
-			return err
-		}
-		data.Tag, data.Title = &t, t.Name
-	}
 	switch {
 	case isHTMX(r) && q.Offset > 0:
 		return s.render(w, "results-page", data)
@@ -204,9 +182,6 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) error {
 		return s.render(w, "results", data)
 	}
 	if data.Books, err = s.store.Books(false); err != nil {
-		return err
-	}
-	if data.Tags, err = s.store.Tags(); err != nil {
 		return err
 	}
 	return s.render(w, "search.html", data)
