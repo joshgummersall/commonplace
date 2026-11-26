@@ -105,8 +105,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /h/{id}", s.handle(s.highlight))
 	mux.HandleFunc("GET /h/{id}/similar", s.handle(s.similar))
 	mux.HandleFunc("POST /h/{id}/favorite", s.handle(s.favorite))
-	mux.HandleFunc("GET /h/{id}/card", s.handle(s.cardView))
-	mux.HandleFunc("GET /h/{id}/bury", s.handle(s.confirmBury))
 	mux.HandleFunc("POST /h/{id}/bury", s.handle(s.bury))
 	mux.HandleFunc("POST /h/{id}/unbury", s.handle(s.unbury))
 	mux.HandleFunc("POST /h/{id}/notes", s.handle(s.addNote))
@@ -174,6 +172,9 @@ func (s *Server) handle(h func(http.ResponseWriter, *http.Request) error) http.H
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Responses differ for htmx and full-page requests to one URL.
 		w.Header().Add("Vary", "HX-Request")
+		// Pages change under the same URL (a new note, a bury), so going
+		// back must fetch them again rather than show a stale copy.
+		w.Header().Set("Cache-Control", "no-store")
 		err := h(w, r)
 		if err == nil {
 			return

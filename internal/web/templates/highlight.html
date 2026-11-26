@@ -60,9 +60,9 @@
   </header>
   {{range paragraphs .Body}}<p>{{.}}</p>{{end}}
   <div class="note-actions">
-    <button type="button" class="link" data-action="edit"
+    <button type="button" class="link" data-action="edit" title="Edit (e)"
       hx-get="/notes/{{.ID}}/edit" hx-target="#note-{{.ID}}" hx-swap="outerHTML">Edit</button>
-    <button type="button" class="link" data-action="delete"
+    <button type="button" class="link" data-action="delete" data-confirm="d" title="Delete (d)"
       hx-delete="/notes/{{.ID}}" hx-target="#note-{{.ID}}" hx-swap="outerHTML">Delete</button>
   </div>
 </article>

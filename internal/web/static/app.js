@@ -28,6 +28,7 @@
       return;
     }
     if (list.length === 0) return;
+    disarm();
     current = Math.max(0, Math.min(i, list.length - 1));
     paint();
     const el = list[current];
@@ -56,6 +57,43 @@
     btn.click();
     return true;
   }
+
+  // ---- confirm -------------------------------------------------------
+
+  // A button with data-confirm="<key>" asks before acting: the first press
+  // arms it in place (it reads "Confirm?", with a key hint beside it), and
+  // the second sends its request. Esc or moving the selection disarms it.
+  // The layout barely moves, and keys and clicks behave the same.
+  let armed = null;
+
+  function disarm() {
+    if (!armed) return;
+    const { btn, label, hint } = armed;
+    armed = null;
+    btn.textContent = label;
+    btn.classList.remove("is-armed");
+    btn.closest("[data-item]")?.classList.remove("is-confirming");
+    hint.remove();
+  }
+
+  document.addEventListener("htmx:confirm", (e) => {
+    const btn = e.detail.elt;
+    if (!btn.matches("[data-confirm]")) return;
+    // Second press: let the request go. The swap replaces the button.
+    if (armed?.btn === btn) return;
+    e.preventDefault();
+    disarm();
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    hint.innerHTML = `<kbd>${btn.dataset.confirm}</kbd> or <kbd>↩</kbd> confirms · <kbd>Esc</kbd> cancels`;
+    armed = { btn, label: btn.textContent, hint };
+    btn.textContent = "Confirm?";
+    btn.classList.add("is-armed");
+    btn.closest("[data-item]")?.classList.add("is-confirming");
+    btn.after(hint);
+    // So Enter presses it.
+    btn.focus({ preventScroll: true });
+  });
 
   // ---- status line (mode, pending keys, messages) ----------------------
 
@@ -146,7 +184,7 @@
     if (q) location.href = `/h/${q.dataset.id}#write`;
   }
 
-  // Bury and unbury are one toggle on b.
+  // Bury and unbury are one toggle on b; a bury asks first (see confirm).
   function bury() {
     if (!act("bury", "quote")) act("unbury", "quote");
   }
@@ -187,7 +225,7 @@
   }
 
   // Each entry: keys, help text, and a function taking the count (1 if
-  // none was typed). Sequences such as "gg" and "dd" are matched in full.
+  // none was typed). Sequences such as "gg" and "yy" are matched in full.
   const KEYS = [
     ["Move"],
     [["j"], "Next item", (n) => select(current + n)],
@@ -207,13 +245,13 @@
     [["gf", "F"], "Favorites: toggle the filter on Search", toggleFavorites],
     ["Act"],
     [["f"], "Favorite", () => act("favorite", "quote")],
-    [["b"], "Bury / unbury: hide from Daily and Search (asks first)", bury],
-    [["x", "dd"], "Delete selected note", () => act("delete", "note")],
+    [["b"], "Bury / unbury: hide from Daily and Search (b again confirms)", bury],
+    [["d", "x"], "Delete selected note (d again confirms)", () => act("delete", "note")],
     [["u"], "Undo", undo],
     [["yy"], "Copy quote with source", yank],
     [["s"], "More like this", () => similarPanel() || act("similar", "quote")],
     [["i", "a"], "Write a note", writeNote],
-    [["cc"], "Edit selected note", () => act("edit", "note")],
+    [["e", "cc"], "Edit selected note", () => act("edit", "note")],
     [["?"], "Toggle this help", () => toggleHelp()],
   ];
 
@@ -301,7 +339,7 @@
     if (e.key === "Escape") {
       reset();
       toggleHelp(false);
-      document.querySelector('main .is-confirming [data-action="cancel"]')?.click();
+      disarm();
       return;
     }
     const key = keyName(e);
@@ -355,6 +393,13 @@
     }
     paint();
     updateMode();
+  });
+
+  // A page restored from the back/forward cache shows state from before
+  // you left (say, a note count before adding a note). Reload it; the
+  // selection comes back from sessionStorage.
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) location.reload();
   });
 
   renderHelp();

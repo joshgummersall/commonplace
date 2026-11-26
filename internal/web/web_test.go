@@ -205,12 +205,8 @@ func TestFavoriteAndBury(t *testing.T) {
 	_, body = h.do("POST", path+"/favorite", nil, true)
 	mustContain(t, body, `aria-pressed="false"`)
 
-	// Bury asks first; cancelling changes nothing.
-	_, body = h.do("GET", path+"/bury", nil, true)
-	mustContain(t, body, "is-confirming", "Bury this quote?", fmt.Sprintf(`hx-post="/h/%d/bury"`, id))
-	_, body = h.do("GET", path+"/card", nil, true)
-	mustContain(t, body, `data-action="bury"`)
-	mustNotContain(t, body, "is-confirming", "is-buried")
+	// Bury asks first, in the browser (see data-confirm in app.js).
+	mustContain(t, h.get("/"), `data-action="bury" data-confirm="b"`)
 
 	// In a list, a buried quote leaves a line with Undo.
 	_, body = h.do("POST", path+"/bury", nil, true)
@@ -279,6 +275,10 @@ func TestNotes(t *testing.T) {
 	// The card on the daily page counts notes and the search finds them.
 	mustContain(t, h.get("/"), "1 note")
 	mustContain(t, h.get("/search?q=edited"), "<mark>Edited</mark>")
+
+	// Delete asks first, in the browser (see data-confirm in app.js).
+	_, body = h.do("GET", noteURL, nil, true)
+	mustContain(t, body, `data-action="delete" data-confirm="d"`)
 
 	status, body := h.do("DELETE", noteURL, nil, true)
 	if status != http.StatusOK {
@@ -625,6 +625,20 @@ func TestAssetsAreVersioned(t *testing.T) {
 	resp.Body.Close()
 	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
 		t.Errorf("versioned asset Cache-Control = %q", cc)
+	}
+}
+
+// Going back to a page must refetch it, so a note added on the quote
+// page shows in the card's note count.
+func TestPagesAreNotStored(t *testing.T) {
+	h := newHarness(t)
+	resp, err := http.Get(h.srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("page Cache-Control = %q, want no-store", cc)
 	}
 }
 

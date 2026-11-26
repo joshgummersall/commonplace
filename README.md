@@ -132,7 +132,7 @@ app for the full list.
 | `o` `Enter` / `h` `Ctrl-o` | Open quote / back |
 | `/` `gs`, `gd`, `gf` | Search, go to Daily, toggle the Favorites filter |
 | `f`, `b`, `s` | Favorite, bury, more like this |
-| `i`, `cc`, `dd` | Write, edit, delete a note |
+| `i`, `e`, `d` | Write, edit, delete a note |
 | `yy`, `u` | Copy quote with source, undo |
 
 ## Configuration

@@ -24,8 +24,6 @@ type card struct {
 	// Detail is set on the quote page, where the notes are already shown
 	// below the card.
 	Detail bool
-	// ConfirmBury asks before burying.
-	ConfirmBury bool
 }
 
 func (s *Server) cards(entries []store.Entry) ([]card, error) {
@@ -320,25 +318,6 @@ func (s *Server) cardFor(r *http.Request) (card, error) {
 	c, err := s.card(id)
 	c.Detail = r.FormValue("detail") == "1"
 	return c, err
-}
-
-// cardView re-renders a card, for cancelling a bury.
-func (s *Server) cardView(w http.ResponseWriter, r *http.Request) error {
-	c, err := s.cardFor(r)
-	if err != nil {
-		return err
-	}
-	return s.render(w, "card", c)
-}
-
-// confirmBury shows the card asking whether to bury the quote.
-func (s *Server) confirmBury(w http.ResponseWriter, r *http.Request) error {
-	c, err := s.cardFor(r)
-	if err != nil {
-		return err
-	}
-	c.ConfirmBury = true
-	return s.render(w, "card", c)
 }
 
 // bury buries a quote. In a list the card gives way to a line with Undo,

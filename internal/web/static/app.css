@@ -141,9 +141,10 @@ cite a:hover { text-decoration: underline; }
 .author::before { content: "· "; }
 
 .buried-note { margin: 0; padding: 0.75rem 1rem; font-size: 0.875rem; color: var(--muted); }
-.confirm-bury { border-top: 1px solid var(--rule); padding-top: 0.75rem; margin-top: 0.75rem; }
-.confirm-bury p { margin: 0 0 0.5rem; font-size: 0.9375rem; }
 .card.is-confirming { border-color: var(--danger); }
+/* A button waiting for a second press (see app.js). */
+button.is-armed { color: var(--danger); border-color: var(--danger); }
+.actions { align-items: baseline; }
 .buried-banner { margin: 0 0 0.75rem; font-size: 0.875rem; color: var(--muted); }
 
 /* Buttons */
@@ -222,7 +223,7 @@ input[type="search"] { padding: 0.75rem 1rem; font-size: 1.0625rem; }
 .note header { font-size: 0.8125rem; color: var(--muted); display: flex; gap: 0.5rem; }
 .note .source { font-weight: 600; color: var(--text); }
 .note p { margin: 0.375rem 0; white-space: pre-wrap; }
-.note-actions { display: flex; gap: 1rem; font-size: 0.8125rem; }
+.note-actions { display: flex; align-items: baseline; gap: 1rem; font-size: 0.8125rem; }
 
 textarea { padding: 0.75rem; line-height: 1.5; resize: vertical; }
 .note-form { margin-top: 1.5rem; }
@@ -231,6 +232,7 @@ textarea { padding: 0.75rem; line-height: 1.5; resize: vertical; }
 .error { color: var(--danger); font-size: 0.875rem; margin: 0.5rem 0 0; }
 
 .note.is-current { border-left-color: var(--accent); }
+.note.is-confirming { border-left-color: var(--danger); }
 .note:focus { outline: none; }
 .note-deleted { color: var(--muted); font-size: 0.875rem; margin: 0 0 1.25rem; }
 
